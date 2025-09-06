@@ -14,7 +14,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Find popular places around you</title>
 
-  <!-- Bootstrap 4 & Font Awesome -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.1.2/css/bootstrap.min.css">
   <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.3.1/css/all.css">
 
@@ -24,14 +23,13 @@
       --app-bg: #f7f8fa;
       --card-border: #e6e8eb;
     }
-    html, body {
-      height: 100%;
-    }
+    html, body { height: 100%; }
     body {
       background: var(--app-bg);
-      font-family: "Open Sans", system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
+      font-family: "Open Sans", system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans";
       margin: 0;
-      overflow: hidden; /* keep full-viewport app feel */
+      /* allow overlays like the Places suggestions to show */
+      overflow: auto;
     }
     .app {
       display: grid;
@@ -53,10 +51,8 @@
       display: flex;
       flex-direction: column;
       overflow: hidden;
+      position: relative;
     }
     .panel-header {
       padding: 14px 16px;
-      border-bottom: 1px solid var(--card-border);
-      background: #fff;
-      position: sticky;
-      top: 0
+      border-bottom: 1px solid v
