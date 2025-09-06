@@ -258,8 +258,9 @@
 
       // SearchBox
       const input = document.getElementById('pac-input');
-      const searchBox = new google.maps.places.SearchBox(input);
-      map.controls[google.maps.ControlPosition.TOP_LEFT].push(input);
+      const searchBox = new google.maps.places.SearchBox(input);      // Keep the search box in the page layout (outside the map).
+      // If you want it inside the map UI, re-enable the next line.
+      // map.controls[google.maps.ControlPosition.TOP_LEFT].push(input);
 
       // Bias results to current viewport
       map.addListener('bounds_changed', () => {
