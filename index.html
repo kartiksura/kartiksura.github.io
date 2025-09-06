@@ -1,4 +1,4 @@
-
+```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -40,8 +40,7 @@
 
 <body translate="no">
   <h1 class="text-warning text-center">Find popular places</h1>
-  <h4 class="text-secondary text-center">Powered by Google Maps, this sorts the places by number of reviews rather than average rating.</h4>
-  <h4 class="text-secondary text-center">This helps in finding popular places, especially in touristy areas.</h4>
+  <h4 class="text-secondary text-center">Powered by Google Maps. Filter by distance and choose Top or New places.</h4>
 
   <div id="header"></div>
 
@@ -50,7 +49,21 @@
   </div>
 
   <div class="container">
-    <input id="pac-input" class="searchTerm" placeholder="E.g. Cafes near Whitefield" />
+    <!-- DEFAULT FOCUS -->
+    <input id="pac-input" class="searchTerm" placeholder="E.g. Cafes near Whitefield" autofocus />
+
+    <!-- Sorting mode toggle -->
+    <div class="mt-2 text-light">
+      <div class="btn-group btn-group-toggle" data-toggle="buttons">
+        <label class="btn btn-sm btn-outline-info active" id="mode-top-label">
+          <input type="radio" name="modeOptions" id="mode-top" autocomplete="off" checked> Top places
+        </label>
+        <label class="btn btn-sm btn-outline-info" id="mode-new-label">
+          <input type="radio" name="modeOptions" id="mode-new" autocomplete="off"> New places
+        </label>
+      </div>
+      <div class="hint mt-1">Top = sort by number of ratings. New = newest first (approximated via review timestamps; fallback to low ratings).</div>
+    </div>
 
     <!-- Distance slider UI -->
     <div class="mt-2 text-light">
@@ -94,6 +107,12 @@
 
     function initAutocomplete() {
       const listEl = document.getElementById("ticketdiv");
+      const input = document.getElementById("pac-input");
+      const slider = document.getElementById("distance-slider");
+      const distanceValue = document.getElementById("distance-value");
+      const modeTop = document.getElementById("mode-top");
+      const modeNew = document.getElementById("mode-new");
+
       const map = new google.maps.Map(document.getElementById("map"), {
         center: { lat: -33.8688, lng: 151.2195 },
         zoom: 17,
@@ -104,10 +123,16 @@
       let markers = [];
       let lastPlaces = [];
       let origin = map.getCenter(); // updated to geolocation if available
+      let mode = "top"; // "top" | "new"
+      const ageCache = new Map();        // place_id -> newnessScore (timestamp ms of earliest review)
+      const agePending = new Map();      // place_id -> Promise<number>
+      const placesService = new google.maps.places.PlacesService(map);
+
+      // Visualize the filter radius
       let radiusCircle = new google.maps.Circle({
         map,
         center: origin,
-        radius: parseFloat(document.getElementById("distance-slider").value) * 1000,
+        radius: parseFloat(slider.value) * 1000,
         strokeColor: "#00b4cc",
         strokeOpacity: 0.8,
         strokeWeight: 1,
@@ -116,9 +141,9 @@
         clickable: false
       });
 
-      // Use geolocation as the distance origin when available
+      // Use geolocation as origin when available
       if (navigator.geolocation) {
-        var location_timeout = setTimeout("geolocFail()", 10000);
+        const location_timeout = setTimeout(geolocFail, 10000);
         navigator.geolocation.getCurrentPosition(function (position) {
           clearTimeout(location_timeout);
           const pos = new google.maps.LatLng(position.coords.latitude, position.coords.longitude);
@@ -128,34 +153,51 @@
         });
       }
 
+      // Create the search box and link it to the UI element.
+      const searchBox = new google.maps.places.SearchBox(input);
+      map.controls[google.maps.ControlPosition.TOP_LEFT].push(input);
+
+      // Ensure the text box keeps focus after Maps moves it into controls
+      setTimeout(() => { input.focus(); input.select(); }, 0);
+      google.maps.event.addListenerOnce(map, 'idle', () => {
+        input.focus();
+        input.select();
+      });
+
+      // Bias the SearchBox results towards current map's viewport.
+      map.addListener("bounds_changed", () => {
+        searchBox.setBounds(map.getBounds());
+      });
+
       // Allow panning the map to redefine origin (on idle)
       map.addListener("idle", () => {
-        // If user has panned/zoomed, treat current center as origin unless we just set geolocation.
         origin = map.getCenter();
         radiusCircle.setCenter(origin);
         if (lastPlaces.length) renderPlaces(lastPlaces);
       });
 
       // Distance slider + label (live re-filter)
-      const slider = document.getElementById("distance-slider");
-      const distanceValue = document.getElementById("distance-value");
       if (slider && distanceValue) {
         slider.addEventListener("input", function () {
           const km = parseFloat(this.value);
           distanceValue.textContent = km;
           radiusCircle.setRadius(km * 1000);
-          if (lastPlaces && lastPlaces.length) renderPlaces(lastPlaces);
+          if (lastPlaces.length) renderPlaces(lastPlaces);
         });
       }
 
-      // Create the search box and link it to the UI element.
-      const input = document.getElementById("pac-input");
-      const searchBox = new google.maps.places.SearchBox(input);
-      map.controls[google.maps.ControlPosition.TOP_LEFT].push(input);
-
-      // Bias the SearchBox results towards current map's viewport.
-      map.addListener("bounds_changed", () => {
-        searchBox.setBounds(map.getBounds());
+      // Mode toggle (Top vs New)
+      modeTop.addEventListener("change", (e) => {
+        if (e.target.checked) {
+          mode = "top";
+          if (lastPlaces.length) renderPlaces(lastPlaces);
+        }
+      });
+      modeNew.addEventListener("change", (e) => {
+        if (e.target.checked) {
+          mode = "new";
+          if (lastPlaces.length) renderPlaces(lastPlaces);
+        }
       });
 
       function clearMarkers() {
@@ -163,16 +205,45 @@
         markers = [];
       }
 
-      function renderPlaces(places) {
+      // Fetch/compute a "newness" score (bigger = newer) for a place.
+      // Primary signal: earliest review timestamp (ms). Fallback: fewer ratings => newer approximation.
+      function getNewnessScore(place) {
+        const pid = place.place_id;
+        if (ageCache.has(pid)) return Promise.resolve(ageCache.get(pid));
+        if (agePending.has(pid)) return agePending.get(pid);
+
+        const p = new Promise((resolve) => {
+          placesService.getDetails(
+            { placeId: pid, fields: ['reviews', 'user_ratings_total'] },
+            (details, status) => {
+              let score;
+              if (status === google.maps.places.PlacesServiceStatus.OK && details && Array.isArray(details.reviews) && details.reviews.length) {
+                const firstTsMs = Math.min(...details.reviews.map(r => (r.time || 0) * 1000));
+                // Newer places have larger "first seen" timestamp
+                score = firstTsMs || (Date.now() - (place.user_ratings_total || 0) * 86400000);
+              } else {
+                // Fallback heuristic: fewer ratings ~ newer
+                score = Date.now() - (place.user_ratings_total || 0) * 86400000;
+              }
+              ageCache.set(pid, score);
+              agePending.delete(pid);
+              resolve(score);
+            }
+          );
+        });
+        agePending.set(pid, p);
+        return p;
+      }
+
+      async function renderPlaces(places) {
         listEl.innerHTML = "";
         clearMarkers();
         if (!places || places.length === 0) return;
 
         const maxKm = slider ? parseFloat(slider.value) : Infinity;
-        const bounds = new google.maps.LatLngBounds();
 
-        // Use Google's precise spherical distance (meters)
-        const filtered = places.filter(p => {
+        // Filter with Google's spherical distance (meters) from origin
+        let filtered = places.filter(p => {
           if (!p.geometry || !p.geometry.location) return false;
           const meters = google.maps.geometry.spherical.computeDistanceBetween(origin, p.geometry.location);
           return meters <= maxKm * 1000;
@@ -183,8 +254,21 @@
           return;
         }
 
-        // Sort by number of ratings (descending)
-        filtered.sort((a, b) => (b.user_ratings_total || 0) - (a.user_ratings_total || 0));
+        // Sort
+        if (mode === "top") {
+          filtered.sort((a, b) => (b.user_ratings_total || 0) - (a.user_ratings_total || 0));
+        } else {
+          // "New places" — compute newness scores and sort (desc = newer first)
+          listEl.innerHTML = `<div class="list-group-item">Finding newest places…</div>`;
+          const scores = await Promise.all(filtered.map(p => getNewnessScore(p)));
+          filtered = filtered
+            .map((p, i) => ({ p, s: scores[i] }))
+            .sort((a, b) => (b.s - a.s))
+            .map(x => x.p);
+          listEl.innerHTML = ""; // clear loading
+        }
+
+        const bounds = new google.maps.LatLngBounds();
 
         filtered.forEach((place) => {
           if (!place.geometry || !place.geometry.location) return;
@@ -222,8 +306,12 @@
                     ? "<p class='text-primary mb-1'><small>Open now</small></p>"
                     : "<p class='text-danger mb-1'><small>Closed</small></p>"
                 }
-                <span class="badge badge-info badge-pill">${info.user_ratings_total} ratings</span>
+                <span class="badge badge-info badge-pill">${info.user_ratings_total || 0} ratings</span>
                 <span class="badge badge-secondary badge-pill ml-2">${info.distance_km} km</span>
+                ${mode === "new" && ageCache.has(place.place_id)
+                  ? `<span class="badge badge-light badge-pill ml-2">newness: ${new Date(ageCache.get(place.place_id)).toLocaleDateString()}</span>`
+                  : ""
+                }
               </div>
               <div class="image-parent">
                 ${info.photo ? `<img src="${info.photo}" class="img-fluid" alt="place" />` : ""}
@@ -242,7 +330,6 @@
           else bounds.extend(place.geometry.location);
         });
 
-        // Keep the current view but make sure filtered bounds are visible
         // If you prefer strict fit to results, uncomment:
         // map.fitBounds(bounds);
       }
@@ -259,10 +346,11 @@
   </script>
 
   <!-- Google Maps API (key unchanged) -->
-  <!-- NOTE: add 'geometry' to libraries for precise distance calculations -->
+  <!-- NOTE: include 'geometry' for precise distance calculations -->
   <script
     src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBCDJZDoS6NBc0JYuk11tx7v2kmIKR5I1I&callback=initAutocomplete&libraries=places,geometry&v=weekly"
     defer>
   </script>
 </body>
 </html>
+```
