@@ -1,3 +1,4 @@
+```html
 <!DOCTYPE html>
 <html lang="en" >
 
@@ -154,6 +155,9 @@ body {
 // parameter when you first load the API. For example:
 // <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&libraries=places">
 
+// ADDED: define geolocFail to avoid errors from setTimeout string
+function geolocFail(){ /* no-op */ }
+
 // ADDED: simple Haversine helper (km)
 function distanceKmBetween(a, b) {
   const toRad = d => (d * Math.PI) / 180;
@@ -240,10 +244,21 @@ function initAutocomplete() {
     // For each place, get the icon, name and location.
     const bounds = new google.maps.LatLngBounds();
 
-    // ADDED: filter by distance from current map center
-    const centerRef = map.getCenter();
-    const maxKm = slider ? parseFloat(slider.value) : Infinity;
+    // ADDED: reference point = centroid of returned places (fallback to map center)
+    const centerRef = (() => {
+      const pts = places
+        .filter(p => p.geometry && p.geometry.location)
+        .map(p => p.geometry.location);
+      if (pts.length) {
+        const lat = pts.reduce((s, loc) => s + loc.lat(), 0) / pts.length;
+        const lng = pts.reduce((s, loc) => s + loc.lng(), 0) / pts.length;
+        return new google.maps.LatLng(lat, lng);
+      }
+      return map.getCenter();
+    })();
 
+    // ADDED: filter by distance from the reference point
+    const maxKm = slider ? parseFloat(slider.value) : Infinity;
     let filtered = places.filter(p => {
       if (!p.geometry || !p.geometry.location) return false;
       const dKm = distanceKmBetween(centerRef, p.geometry.location);
@@ -343,3 +358,4 @@ window.initAutocomplete = initAutocomplete;
 </body>
 
 </html>
+```
