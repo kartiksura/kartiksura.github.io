@@ -1,4 +1,3 @@
-```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -35,6 +34,75 @@
     .list-group { width: 100%; font-size: 20px; color: #000; }
     .wrap { width: 80%; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); }
     .hint { font-size: 12px; opacity: 0.75; }
+
+    /* --- Thicker, easier-to-grab slider --- */
+    #distance-slider {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 16px;                 /* thicker track */
+      background: transparent;
+      margin: 6px 0;
+      cursor: pointer;
+      touch-action: pan-y;
+    }
+    #distance-slider:focus { outline: none; }
+
+    /* WebKit */
+    #distance-slider::-webkit-slider-runnable-track {
+      height: 16px;
+      background: #1b1b1b;
+      border-radius: 10px;
+      border: 1px solid #00b4cc;
+    }
+    #distance-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      margin-top: -6px;             /* centers thumb on 16px track (thumb 28px) */
+      width: 28px; height: 28px;    /* bigger thumb */
+      border-radius: 50%;
+      background: #00b4cc;
+      border: 2px solid #66e0ef;
+      box-shadow: 0 0 0 3px rgba(0,180,204,0.15);
+    }
+    #distance-slider:active::-webkit-slider-thumb {
+      transform: scale(1.05);
+    }
+
+    /* Firefox */
+    #distance-slider::-moz-range-track {
+      height: 16px;
+      background: #1b1b1b;
+      border-radius: 10px;
+      border: 1px solid #00b4cc;
+    }
+    #distance-slider::-moz-range-thumb {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      background: #00b4cc;
+      border: 2px solid #66e0ef;
+      box-shadow: 0 0 0 3px rgba(0,180,204,0.15);
+    }
+
+    /* Old Edge / IE */
+    #distance-slider::-ms-track {
+      height: 16px;
+      background: transparent;
+      border-color: transparent;
+      color: transparent;
+    }
+    #distance-slider::-ms-fill-lower,
+    #distance-slider::-ms-fill-upper {
+      height: 16px;
+      background: #1b1b1b;
+      border: 1px solid #00b4cc;
+      border-radius: 10px;
+    }
+    #distance-slider::-ms-thumb {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      background: #00b4cc;
+      border: 2px solid #66e0ef;
+      margin-top: 0;
+    }
   </style>
 </head>
 
@@ -54,21 +122,21 @@
 
     <!-- Sorting mode toggle -->
     <div class="mt-2 text-light">
-      <div class="btn-group btn-group-toggle" data-toggle="buttons">
-        <label class="btn btn-sm btn-outline-info active" id="mode-top-label">
+      <div class="btn-group btn-group-toggle" data-toggle="buttons" role="group" aria-label="Sort mode">
+        <label class="btn btn-sm btn-outline-info active" id="mode-top-label" aria-pressed="true" title="Sort by number of ratings">
           <input type="radio" name="modeOptions" id="mode-top" autocomplete="off" checked> Top places
         </label>
-        <label class="btn btn-sm btn-outline-info" id="mode-new-label">
+        <label class="btn btn-sm btn-outline-info" id="mode-new-label" title="Newest places first">
           <input type="radio" name="modeOptions" id="mode-new" autocomplete="off"> New places
         </label>
       </div>
-      <div class="hint mt-1">Top = sort by number of ratings. New = newest first (approximated via review timestamps; fallback to low ratings).</div>
+      <div class="hint mt-1">Top = sort by number of ratings. New = newest first (estimated via earliest review timestamp; fallback to ratings count).</div>
     </div>
 
     <!-- Distance slider UI -->
     <div class="mt-2 text-light">
       <label for="distance-slider">Max distance: <span id="distance-value">5</span> km</label>
-      <input type="range" id="distance-slider" min="1" max="50" value="5" step="1" style="width:100%;" />
+      <input type="range" id="distance-slider" min="1" max="50" value="5" step="1" />
       <div class="hint mt-1">Distance is measured from your location (if allowed) or the current map center.</div>
     </div>
 
@@ -124,7 +192,7 @@
       let lastPlaces = [];
       let origin = map.getCenter(); // updated to geolocation if available
       let mode = "top"; // "top" | "new"
-      const ageCache = new Map();        // place_id -> newnessScore (timestamp ms of earliest review)
+      const ageCache = new Map();        // place_id -> newnessScore
       const agePending = new Map();      // place_id -> Promise<number>
       const placesService = new google.maps.places.PlacesService(map);
 
@@ -150,6 +218,8 @@
           origin = pos;
           map.setCenter(pos);
           radiusCircle.setCenter(pos);
+          // re-render from geolocated origin if we already have results
+          if (lastPlaces.length) renderPlaces(lastPlaces);
         });
       }
 
@@ -157,7 +227,7 @@
       const searchBox = new google.maps.places.SearchBox(input);
       map.controls[google.maps.ControlPosition.TOP_LEFT].push(input);
 
-      // Ensure the text box keeps focus after Maps moves it into controls
+      // Keep focus after Maps moves input into controls
       setTimeout(() => { input.focus(); input.select(); }, 0);
       google.maps.event.addListenerOnce(map, 'idle', () => {
         input.focus();
@@ -176,29 +246,23 @@
         if (lastPlaces.length) renderPlaces(lastPlaces);
       });
 
-      // Distance slider + label (live re-filter)
-      if (slider && distanceValue) {
-        slider.addEventListener("input", function () {
-          const km = parseFloat(this.value);
-          distanceValue.textContent = km;
-          radiusCircle.setRadius(km * 1000);
-          if (lastPlaces.length) renderPlaces(lastPlaces);
-        });
-      }
+      // Distance slider (live updates) — handle both 'input' (while dragging) and 'change' (after)
+      const onDistanceChanged = () => {
+        const km = parseFloat(slider.value);
+        distanceValue.textContent = km;
+        radiusCircle.setRadius(km * 1000);
+        if (lastPlaces.length) renderPlaces(lastPlaces);
+      };
+      slider.addEventListener("input", onDistanceChanged);
+      slider.addEventListener("change", onDistanceChanged);
 
-      // Mode toggle (Top vs New)
-      modeTop.addEventListener("change", (e) => {
-        if (e.target.checked) {
-          mode = "top";
-          if (lastPlaces.length) renderPlaces(lastPlaces);
-        }
-      });
-      modeNew.addEventListener("change", (e) => {
-        if (e.target.checked) {
-          mode = "new";
-          if (lastPlaces.length) renderPlaces(lastPlaces);
-        }
-      });
+      // Mode toggle — re-render immediately on change
+      const onModeChanged = () => {
+        mode = modeTop.checked ? "top" : "new";
+        if (lastPlaces.length) renderPlaces(lastPlaces);
+      };
+      modeTop.addEventListener("change", onModeChanged);
+      modeNew.addEventListener("change", onModeChanged);
 
       function clearMarkers() {
         markers.forEach(m => m.setMap(null));
@@ -206,7 +270,6 @@
       }
 
       // Fetch/compute a "newness" score (bigger = newer) for a place.
-      // Primary signal: earliest review timestamp (ms). Fallback: fewer ratings => newer approximation.
       function getNewnessScore(place) {
         const pid = place.place_id;
         if (ageCache.has(pid)) return Promise.resolve(ageCache.get(pid));
@@ -218,11 +281,11 @@
             (details, status) => {
               let score;
               if (status === google.maps.places.PlacesServiceStatus.OK && details && Array.isArray(details.reviews) && details.reviews.length) {
+                // use earliest review timestamp (ms) as "first seen" — higher = newer
                 const firstTsMs = Math.min(...details.reviews.map(r => (r.time || 0) * 1000));
-                // Newer places have larger "first seen" timestamp
                 score = firstTsMs || (Date.now() - (place.user_ratings_total || 0) * 86400000);
               } else {
-                // Fallback heuristic: fewer ratings ~ newer
+                // fallback: fewer ratings ~ newer
                 score = Date.now() - (place.user_ratings_total || 0) * 86400000;
               }
               ageCache.set(pid, score);
@@ -254,18 +317,17 @@
           return;
         }
 
-        // Sort
+        // Sort based on mode
         if (mode === "top") {
           filtered.sort((a, b) => (b.user_ratings_total || 0) - (a.user_ratings_total || 0));
         } else {
-          // "New places" — compute newness scores and sort (desc = newer first)
           listEl.innerHTML = `<div class="list-group-item">Finding newest places…</div>`;
           const scores = await Promise.all(filtered.map(p => getNewnessScore(p)));
           filtered = filtered
             .map((p, i) => ({ p, s: scores[i] }))
-            .sort((a, b) => (b.s - a.s))
+            .sort((a, b) => (b.s - a.s)) // newer first
             .map(x => x.p);
-          listEl.innerHTML = ""; // clear loading
+          listEl.innerHTML = ""; // clear loading state
         }
 
         const bounds = new google.maps.LatLngBounds();
@@ -309,7 +371,7 @@
                 <span class="badge badge-info badge-pill">${info.user_ratings_total || 0} ratings</span>
                 <span class="badge badge-secondary badge-pill ml-2">${info.distance_km} km</span>
                 ${mode === "new" && ageCache.has(place.place_id)
-                  ? `<span class="badge badge-light badge-pill ml-2">newness: ${new Date(ageCache.get(place.place_id)).toLocaleDateString()}</span>`
+                  ? `<span class="badge badge-light badge-pill ml-2">since ${new Date(ageCache.get(place.place_id)).toLocaleDateString()}</span>`
                   : ""
                 }
               </div>
@@ -330,7 +392,7 @@
           else bounds.extend(place.geometry.location);
         });
 
-        // If you prefer strict fit to results, uncomment:
+        // Optional strict fit:
         // map.fitBounds(bounds);
       }
 
@@ -353,4 +415,3 @@
   </script>
 </body>
 </html>
-```
