@@ -13,7 +13,7 @@
   <meta charset="UTF-8" />
   <title>Find popular places around you</title>
 
-  <!-- CSS only; no 3rd-party JS to avoid "export" errors -->
+  <!-- CSS only -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.1.2/css/bootstrap.min.css" />
 
   <style>
@@ -58,36 +58,6 @@
       width: 28px; height: 28px; border-radius: 50%; background: #00b4cc; border: 2px solid #66e0ef;
     }
   </style>
-</head>
-
-<body translate="no">
-  <div class="container pt-3">
-    <h1 class="text-warning text-center">Find popular places</h1>
-    <h4 class="text-secondary text-center">Filter by distance and choose Top or New places.</h4>
-
-    <input id="pac-input" class="searchTerm" placeholder="E.g. Cafes near Whitefield" autofocus />
-
-    <!-- Sorting mode toggle -->
-    <div class="mt-2 text-light btn-toggle" id="mode-container" role="group" aria-label="Sort mode">
-      <button class="btn btn-sm btn-outline-info active" data-mode="top" title="Sort by number of ratings">Top places</button>
-      <button class="btn btn-sm btn-outline-info" data-mode="new" title="Newest places first">New places</button>
-      <div class="hint mt-1">Top = by number of ratings. New = earliest review date.</div>
-    </div>
-
-    <!-- Distance slider UI -->
-    <div class="mt-2 text-light">
-      <label for="distance-slider">Max distance: <span id="distance-value">5</span> km</label>
-      <input type="range" id="distance-slider" min="1" max="50" value="5" step="1" />
-      <div class="hint mt-1">Measured from your location (if allowed) or the current map center.</div>
-      <div id="notice" class="notice"></div>
-    </div>
-
-    <!-- Map + Results -->
-    <div class="mt-3">
-      <div id="map" class="mb-3"></div>
-      <div id="results" class="list-group"></div>
-    </div>
-  </div>
 
   <script>
     /* Quiet noisy extension error */
@@ -129,7 +99,7 @@
     // Debounce helper
     function debounce(fn, wait=650){ let t; return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args), wait); }; }
 
-    // Globals
+    // Globals (initialized in startApp)
     let map, placesService, searchBox;
     let markers = [];
     let lastPlaces = [];
@@ -150,10 +120,24 @@
       });
     }
 
-    // ---- Main init (after Maps JS loads) ----
-    function initApp(){
+    // Exposed callback from Google loader; ensures DOM is ready before starting
+    function gmapsReady(){
+      if (document.readyState === 'loading'){
+        document.addEventListener('DOMContentLoaded', startApp);
+      } else {
+        startApp();
+      }
+    }
+    window.gmapsReady = gmapsReady; // must be global for callback=
+
+    function startApp(){
+      if (!window.google || !google.maps || !google.maps.places){
+        console.error('[gmaps] Places library not available'); return;
+      }
+
       const resultsEl = document.getElementById("results");
       const input = document.getElementById("pac-input");
+      const goBtn = document.getElementById("go-btn");
       const slider = document.getElementById("distance-slider");
       const distanceValue = document.getElementById("distance-value");
       const modeContainer = document.getElementById("mode-container");
@@ -163,7 +147,7 @@
         center: { lat: -33.8688, lng: 151.2195 }, zoom: 15, mapTypeId: "roadmap"
       });
       placesService = new google.maps.places.PlacesService(map);
-      searchBox = new google.maps.places.SearchBox(input); // suggestions only; we won't move the input
+      searchBox = new google.maps.places.SearchBox(input); // suggestions only
       origin = map.getCenter();
 
       // Visual distance circle
@@ -223,7 +207,7 @@
         if (!q) return;
         noticeEl.textContent = "";
         resultsEl.innerHTML = `<div class="list-group-item">Searching…</div>`;
-        userAdjustedSlider = false; // new search = allow one auto expand if needed
+        userAdjustedSlider = false; // allow one auto expand
 
         const mySearch = ++searchSeq;
         let aggregated = [];
@@ -238,8 +222,10 @@
           }
           aggregated = aggregated.concat(results);
 
-          // Try to fill missing geometry via details (rare)
+          // Fill missing geometry via details (rare)
           const noGeom = aggregated.filter(r => !r.geometry || !r.geometry.location);
+          const afterGeom = () => { lastPlaces = aggregated; renderPlaces(lastPlaces, {resultsEl, slider, noticeEl}); };
+
           if (noGeom.length) {
             Promise.all(noGeom.slice(0,10).map(r => new Promise(res=>{
               placesService.getDetails({ placeId: r.place_id, fields: ['geometry'] }, (d, s)=>{
@@ -248,30 +234,304 @@
                 }
                 res();
               });
-            }))).then(()=> {
-              lastPlaces = aggregated;
-              renderPlaces(lastPlaces, {resultsEl, slider, noticeEl});
-            });
+            }))).then(afterGeom);
           } else {
-            lastPlaces = aggregated;
-            renderPlaces(lastPlaces, {resultsEl, slider, noticeEl});
+            afterGeom();
           }
 
-          // keep paging up to ~60 results or until no next page
+          // Page up to ~60 results
           if (pagination && pagination.hasNextPage && aggregated.length < 60) {
             setTimeout(()=> { if (mySearch === searchSeq) pagination.nextPage(); }, 300);
           }
         };
 
-        placesService.textSearch(request, handleBatch);
+        try {
+          placesService.textSearch(request, handleBatch);
+        } catch (err) {
+          console.error('[gmaps] textSearch call failed:', err);
+          resultsEl.innerHTML = `<div class="list-group-item">Search failed. See console.</div>`;
+        }
       }
 
-      // Enter triggers search
+      // Triggers: Enter, debounced typing, suggestion, and explicit button
       input.addEventListener('keydown', (e)=>{
         if (e.key === 'Enter'){
           e.preventDefault();
           runTextSearch(input.value);
         }
       });
-      // As-you-type (debounced)
-      input.addEventListener('input', debounce(()=> runTextSearch(input.value),
+      input.addEventListener('input', debounce(()=> runTextSearch(input.value), 650));
+      searchBox.addListener("places_changed", ()=> runTextSearch(input.value));
+      goBtn.addEventListener('click', ()=> runTextSearch(input.value));
+    }
+
+    function clearMarkers(){ markers.forEach(m=>m.setMap(null)); markers = []; }
+
+    // Combined meta fetch: earliest review + isOpen(); never rejects
+    function getPlaceMeta(place){
+      const pid = place.place_id;
+      if (metaCache.has(pid)) return Promise.resolve(metaCache.get(pid));
+      if (metaPending.has(pid)) return metaPending.get(pid);
+
+      const p = new Promise((resolve)=>{
+        try{
+          placesService.getDetails(
+            {
+              placeId: pid,
+              fields: ['reviews','user_ratings_total','opening_hours','utc_offset_minutes']
+            },
+            (details, status)=>{
+              let meta = { score: 0, tsMs: null, source: 'heuristic', isOpen: null };
+              try{
+                if (status === google.maps.places.PlacesServiceStatus.OK && details){
+                  if (Array.isArray(details.reviews) && details.reviews.length){
+                    const times = details.reviews.map(r=> r?.time ? r.time*1000 : 0).filter(n=>n>0);
+                    if (times.length){
+                      const firstTsMs = Math.min(...times);
+                      meta.score = firstTsMs;
+                      meta.tsMs = firstTsMs;
+                      meta.source = 'review';
+                    }
+                  }
+                  if (details.opening_hours && typeof details.opening_hours.isOpen === 'function'){
+                    meta.isOpen = !!details.opening_hours.isOpen();
+                  }
+                }
+                if (!meta.tsMs){
+                  meta.score = Date.now() - (place.user_ratings_total || 0)*86400000;
+                }
+              }catch(_){}
+              metaCache.set(pid, meta); metaPending.delete(pid); resolve(meta);
+            }
+          );
+        }catch(_){
+          const meta = { score: Date.now(), tsMs: null, source: 'heuristic', isOpen: null };
+          metaCache.set(pid, meta); metaPending.delete(pid); resolve(meta);
+        }
+      });
+      metaPending.set(pid, p);
+      return p;
+    }
+
+    function paintList(list, {resultsEl}){
+      resultsEl.innerHTML = "";
+      const frag = document.createDocumentFragment();
+      const mode = currentMode();
+      const showAge = (mode === 'new');
+
+      list.forEach(place=>{
+        if (!place.geometry || !place.geometry.location) return;
+
+        const meters = distanceMeters(origin, place.geometry.location);
+        const distKm = (meters/1000).toFixed(2);
+        const pid = place.place_id;
+        const meta = metaCache.get(pid);
+        const ageText = (showAge && meta && meta.tsMs) ? formatAge(meta.tsMs) : (showAge ? "unknown" : "");
+        const sinceText = (showAge && meta && meta.tsMs) ? new Date(meta.tsMs).toLocaleDateString() : "";
+
+        const a = document.createElement("a");
+        a.className = "list-group-item list-group-item-action d-flex justify-content-between align-items-center";
+        a.href = "https://www.google.com/maps/search/?api=1&query=" +
+                 encodeURIComponent(place.formatted_address || place.name) +
+                 "&query_place_id=" + place.place_id;
+
+        a.innerHTML = `
+          <div class="flex-column">
+            <strong class="text-dark">${place.name}</strong>
+            <span class="open-status" data-pid="${pid}"></span>
+            <span class="badge badge-info badge-pill">${place.user_ratings_total || 0} ratings</span>
+            <span class="badge badge-secondary badge-pill ml-2">${distKm} km</span>
+            ${ showAge ? `<span class="badge badge-light badge-pill ml-2 age-badge" data-pid="${pid}">age: ${ageText}</span>` : "" }
+            ${ showAge && sinceText ? `<span class="badge badge-dark badge-pill ml-2 since-badge" data-pid="${pid}">since ${sinceText}</span>` : "" }
+          </div>
+          <div class="image-parent">
+            ${ place.photos && place.photos[0] ? `<img src="${place.photos[0].getUrl()}" class="img-fluid" alt="place">` : "" }
+          </div>
+        `;
+        frag.appendChild(a);
+
+        // Marker
+        markers.push(new google.maps.Marker({ map, title: place.name, position: place.geometry.location }));
+
+        // Open/closed label handling + (if New) age/since updates after details arrive
+        const statusEl = a.querySelector(`.open-status[data-pid="${pid}"]`);
+        const setStatusAndMaybeAge = (m) => {
+          if (statusEl) {
+            if (typeof m?.isOpen === 'boolean') {
+              statusEl.innerHTML = m.isOpen
+                ? "<p class='text-primary mb-1'><small>Open now</small></p>"
+                : "<p class='text-danger mb-1'><small>Closed</small></p>";
+            } else {
+              statusEl.innerHTML = "<p class='text-muted mb-1'><small>Hours: unknown</small></p>";
+            }
+          }
+          if (showAge) {
+            const ageEl = a.querySelector(`.age-badge[data-pid="${pid}"]`);
+            const sinceEl = a.querySelector(`.since-badge[data-pid="${pid}"]`);
+            if (ageEl) ageEl.textContent = "age: " + (m?.tsMs ? formatAge(m.tsMs) : "unknown");
+            if (sinceEl && m?.tsMs) {
+              sinceEl.textContent = "since " + new Date(m.tsMs).toLocaleDateString();
+            } else if (!sinceEl && m?.tsMs) {
+              const parent = ageEl && ageEl.parentElement;
+              if (parent) {
+                const span = document.createElement("span");
+                span.className = "badge badge-dark badge-pill ml-2 since-badge";
+                span.setAttribute("data-pid", pid);
+                span.textContent = "since " + new Date(m.tsMs).toLocaleDateString();
+                parent.appendChild(span);
+              }
+            }
+          }
+        };
+
+        if (meta) setStatusAndMaybeAge(meta);
+        else {
+          statusEl.innerHTML = "<p class='text-muted mb-1'><small>Checking hours…</small></p>";
+          getPlaceMeta(place).then(setStatusAndMaybeAge);
+        }
+      });
+
+      resultsEl.appendChild(frag);
+    }
+
+    function smartOriginAndRadius(results, slider, noticeEl){
+      if (!Array.isArray(results) || results.length === 0) return { changed: false };
+      const locs = results.filter(r => r.geometry?.location).map(r => r.geometry.location);
+      if (!locs.length) return { changed: false };
+
+      const maxKm = parseFloat(slider.value);
+      const allOutside = locs.every(loc => (distanceMeters(origin, loc)/1000) > maxKm);
+
+      if (allOutside) {
+        const avgLat = locs.reduce((s,l)=>s+l.lat(),0)/locs.length;
+        const avgLng = locs.reduce((s,l)=>s+l.lng(),0)/locs.length;
+        const centroid = new google.maps.LatLng(avgLat, avgLng);
+        const distToOld = (distanceMeters(origin, centroid)/1000).toFixed(1);
+        origin = centroid;
+        map.setCenter(origin);
+        noticeEl.textContent = `Auto-centered to results area (~${distToOld} km from previous center).`;
+        return { changed: true, reason: 'recenter' };
+      }
+      return { changed: false };
+    }
+
+    async function renderPlaces(places, {resultsEl, slider, noticeEl}){
+      const mySeq = ++renderSeq;
+
+      resultsEl.innerHTML = "";
+      clearMarkers();
+      if (!places || !places.length) return;
+
+      smartOriginAndRadius(places, slider, noticeEl);
+
+      const mode = currentMode();
+      const maxKm = parseFloat(slider.value);
+
+      let filtered = places.filter(p =>
+        p.geometry && p.geometry.location &&
+        distanceMeters(origin, p.geometry.location) <= maxKm*1000
+      );
+
+      if (!filtered.length && !userAdjustedSlider) {
+        const nearest = [...places]
+          .filter(p => p.geometry?.location)
+          .map(p => distanceMeters(origin, p.geometry.location)/1000)
+          .sort((a,b)=>a-b)[0];
+        if (isFinite(nearest)) {
+          const newKm = Math.min(50, Math.max(maxKm, Math.ceil(nearest + 1)));
+          slider.value = String(newKm);
+          document.getElementById("distance-value").textContent = newKm;
+          noticeEl.textContent = `Expanded distance to ${newKm} km to include the closest result.`;
+          userAdjustedSlider = true;
+          if (mySeq !== renderSeq) return;
+          filtered = places.filter(p =>
+            p.geometry && p.geometry.location &&
+            distanceMeters(origin, p.geometry.location) <= newKm*1000
+          );
+        }
+      }
+
+      if (!filtered.length) {
+        if (mySeq !== renderSeq) return;
+        resultsEl.innerHTML = `<div class="list-group-item">No results within ${parseFloat(slider.value)} km.</div>`;
+        return;
+      }
+
+      if (mode === "top"){
+        filtered.sort((a,b) => (b.user_ratings_total || 0) - (a.user_ratings_total || 0));
+      } else {
+        const haveAllMetas = filtered.every(p => metaCache.has(p.place_id));
+        if (haveAllMetas){
+          filtered = filtered
+            .map(p => ({ p, m: metaCache.get(p.place_id) }))
+            .sort((a,b) => (b.m.score - a.m.score))
+            .map(x => x.p);
+        }
+      }
+
+      if (mySeq !== renderSeq) return;
+      paintList(filtered, {resultsEl});
+
+      if (mode === "new"){
+        const toFetch = filtered.filter(p => !metaCache.has(p.place_id));
+        if (toFetch.length){
+          try{
+            await Promise.all(toFetch.map(p => getPlaceMeta(p)));
+            if (mySeq !== renderSeq) return;
+            const resorted = filtered
+              .map(p => ({ p, m: metaCache.get(p.place_id) }))
+              .sort((a,b) => (b.m.score - a.m.score))
+              .map(x => x.p);
+            if (mySeq !== renderSeq) return;
+            paintList(resorted, {resultsEl});
+          }catch(err){
+            console.warn('Details fetch error (ignored):', err);
+          }
+        }
+      }
+    }
+  </script>
+</head>
+
+<body translate="no">
+  <div class="container pt-3">
+    <h1 class="text-warning text-center">Find popular places</h1>
+    <h4 class="text-secondary text-center">Filter by distance and choose Top or New places.</h4>
+
+    <!-- Input + explicit Search button -->
+    <div class="input-group">
+      <input id="pac-input" class="searchTerm" placeholder="E.g. Cafes near Whitefield" autofocus />
+      <div class="input-group-append">
+        <button id="go-btn" class="btn btn-info" type="button">Search</button>
+      </div>
+    </div>
+
+    <!-- Sorting mode toggle -->
+    <div class="mt-2 text-light btn-toggle" id="mode-container" role="group" aria-label="Sort mode">
+      <button class="btn btn-sm btn-outline-info active" data-mode="top" title="Sort by number of ratings">Top places</button>
+      <button class="btn btn-sm btn-outline-info" data-mode="new" title="Newest places first">New places</button>
+      <div class="hint mt-1">Top = by number of ratings. New = earliest review date (age/since badges only in “New”).</div>
+    </div>
+
+    <!-- Distance slider UI -->
+    <div class="mt-2 text-light">
+      <label for="distance-slider">Max distance: <span id="distance-value">5</span> km</label>
+      <input type="range" id="distance-slider" min="1" max="50" value="5" step="1" />
+      <div class="hint mt-1">Measured from your location (if allowed) or the current map center.</div>
+      <div id="notice" class="notice"></div>
+    </div>
+
+    <!-- Map + Results -->
+    <div class="mt-3">
+      <div id="map" class="mb-3"></div>
+      <div id="results" class="list-group"></div>
+    </div>
+  </div>
+
+  <!-- Google Maps API with YOUR KEY visible below -->
+  <script
+    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBCDJZDoS6NBc0JYuk11tx7v2kmIKR5I1I&libraries=places,geometry&v=weekly&callback=gmapsReady"
+    async defer onerror="console.error('[gmaps] failed to load JS');">
+  </script>
+</body>
+</html>
