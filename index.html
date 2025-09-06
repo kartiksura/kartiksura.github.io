@@ -65,8 +65,10 @@
   <div class="container pb-5">
     <div class="row controls align-items-stretch">
       <div class="col-lg-8 mb-3">
-        <input id="pac-input" class="searchTerm" placeholder="E.g. Cafes near Whitefield" />
-      </div>
+        <div class="input-group input-group-lg">
+          <input id="pac-input" class="form-control searchTerm" placeholder="E.g. Cafes near Whitefield" />
+          <div class="input-group-append">
+            <button id="go-btn" class="btn
       <div class="col-lg-4 mb-3">
         <div class="distance-control h-100">
           <label for="distance-km">Distance filter</label>
@@ -101,7 +103,7 @@
 
   <!-- Load Google Maps JS API: add your key and ensure libraries include places & geometry -->
   <!-- Replace YOUR_API_KEY below with your actual key -->
-  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBCDJZDoS6NBc0JYuk11tx7v2kmIKR5I1I&callback=initAutocomplete&libraries=places,geometry&v=weekly" defer></script>
+  <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&callback=initAutocomplete&libraries=places,geometry&v=weekly" defer></script>
 
   <script>
     // Globals
@@ -138,6 +140,15 @@
     }
 
     $1
+    // Compute the geographic center of a set of places
+    function centerOfPlaces(places) {
+      const b = new google.maps.LatLngBounds();
+      (places || []).forEach(p => {
+        if (p && p.geometry && p.geometry.location) b.extend(p.geometry.location);
+      });
+      return b.isEmpty() ? null : b.getCenter();
+    }
+
     // Build HTML for the marker info window (avoids template literals for easy injection)
     function buildInfoHtml(info) {
       var addr = info.formatted_address || info.vicinity || '';
@@ -270,13 +281,30 @@
 
     function filterAndRender() {
       if (!lastPlaces.length || !map) return;
-      const origin = userPos || map.getCenter();
+
+      // Prefer user's geolocation; otherwise infer center from the returned places; fallback to map center
+      const inferred = centerOfPlaces(lastPlaces);
+      const origin = userPos || inferred || map.getCenter();
 
       // Annotate with distance and filter by selected limit
       const annotated = lastPlaces.map(p => {
         try {
           p._distanceKm = distanceKm(origin, p.geometry && p.geometry.location);
         } catch { p._distanceKm = Infinity; }
+        return p;
+      });
+
+      let filtered = annotated
+        .filter(p => p._distanceKm <= distanceLimitKm)
+        .sort((a, b) => (b.user_ratings_total || 0) - (a.user_ratings_total || 0));
+
+      // If nothing within the distance and we don't have user geolocation yet, relax to show all (so users see *something*)
+      if (!filtered.length && !userPos) {
+        filtered = annotated.sort((a, b) => (b.user_ratings_total || 0) - (a.user_ratings_total || 0));
+      }
+
+      renderListAndMarkers(filtered);
+    } catch { p._distanceKm = Infinity; }
         return p;
       });
 
@@ -344,6 +372,12 @@
 
         // Only keep places with geometry
         lastPlaces = places.filter(p => p && p.geometry && p.geometry.location);
+
+        // Fit map to all returned places immediately so the user sees the area of interest
+        const b = new google.maps.LatLngBounds();
+        lastPlaces.forEach(p => b.extend(p.geometry.location));
+        if (!b.isEmpty()) map.fitBounds(b);
+
         filterAndRender();
       });
     }
