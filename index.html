@@ -80,6 +80,7 @@
 
       let markers = [];
       let lastPlaces = [];
+      const infowindow = new google.maps.InfoWindow();
 
       function clearMarkers() { markers.forEach((m) => m.setMap(null)); markers = []; }
       function fmtDistance(m) { return m < 1000 ? `${Math.round(m)} m` : `${(m/1000).toFixed(1)} km`; }
@@ -134,7 +135,21 @@
             </a>`;
 
           results.insertAdjacentHTML('beforeend', html);
-          markers.push(new google.maps.Marker({ map, title: place.name, position: place.geometry.location }));
+
+          const marker = new google.maps.Marker({ map, title: place.name, position: place.geometry.location });
+          marker.addListener("click", () => {
+            infowindow.setContent(`
+              <div style="font-size:14px">
+                <strong>${info.name}</strong><br/>
+                ${info.address}<br/>
+                ⭐ ${info.rating} (${info.user_ratings_total} reviews)<br/>
+                ${info.distance}
+              </div>
+            `);
+            infowindow.open(map, marker);
+          });
+
+          markers.push(marker);
           if (place.geometry.viewport) bounds.union(place.geometry.viewport); else bounds.extend(place.geometry.location);
         });
 
