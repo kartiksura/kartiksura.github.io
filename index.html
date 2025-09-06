@@ -68,7 +68,10 @@
         <div class="input-group input-group-lg">
           <input id="pac-input" class="form-control searchTerm" placeholder="E.g. Cafes near Whitefield" />
           <div class="input-group-append">
-            <button id="go-btn" class="btn
+            <button id="go-btn" class="btn btn-info">Search</button>
+          </div>
+        </div>
+      </div>
       <div class="col-lg-4 mb-3">
         <div class="distance-control h-100">
           <label for="distance-km">Distance filter</label>
@@ -76,14 +79,16 @@
             <small class="text-light">Within <span id="distance-km-label" class="value">5</span> km</small>
             <small class="text-muted">(from your location or map center)</small>
           </div>
-          <input id="distance-km" class="distance-range mt-2" type="range" min="1" max="20" step="1" value="5" list="tickmarks" />
+          <input id=\"distance-km\" class=\"distance-range mt-2\" type=\"range\" min=\"1\" max=\"30\" step=\"1\" value=\"10\" list=\"tickmarks\" \/>
           <datalist id="tickmarks">
             <option value="1"></option>
             <option value="2"></option>
             <option value="5"></option>
             <option value="10"></option>
             <option value="15"></option>
-            <option value="20"></option>
+            <option value=\"20\"><\/option>
+            <option value=\"25\"><\/option>
+            <option value=\"30\"><\/option>
           </datalist>
         </div>
       </div>
@@ -102,8 +107,8 @@
   </div>
 
   <!-- Load Google Maps JS API: add your key and ensure libraries include places & geometry -->
-  <!-- Replace YOUR_API_KEY below with your actual key -->
-  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBCDJZDoS6NBc0JYuk11tx7v2kmIKR5I1I&callback=initAutocomplete&libraries=places,geometry&v=weekly" defer></script>
+  <!-- Replace AIzaSyBCDJZDoS6NBc0JYuk11tx7v2kmIKR5I1I below with your actual key -->
+  
 
   <script>
     // Globals
@@ -111,7 +116,7 @@
     let markers = [];
     let lastPlaces = [];
     let userPos = null; // google.maps.LatLng | null
-    let distanceLimitKm = 5;
+    let distanceLimitKm = 10;
 
     // Added: shared InfoWindow and PlacesService for marker clicks/details
     let infoWindow;
@@ -284,7 +289,7 @@
 
       // Prefer user's geolocation; otherwise infer center from the returned places; fallback to map center
       const inferred = centerOfPlaces(lastPlaces);
-      const origin = userPos || inferred || map.getCenter();
+      const origin = inferred || userPos || map.getCenter();
 
       // Annotate with distance and filter by selected limit
       const annotated = lastPlaces.map(p => {
@@ -319,6 +324,8 @@
       const resultsDiv = document.getElementById('results');
       const distanceSlider = document.getElementById('distance-km');
       const distanceLabel = document.getElementById('distance-km-label');
+      // Sync label with initial slider value
+      distanceLabel.textContent = distanceSlider.value;
 
       // Init map with a neutral default; will recenter to geolocation if allowed
       map = new google.maps.Map(document.getElementById('map'), {
@@ -329,6 +336,32 @@
       // Initialize shared InfoWindow and PlacesService for marker clicks/details
       infoWindow = new google.maps.InfoWindow();
       placesService = new google.maps.places.PlacesService(map);
+
+      // Helper: run a Text Search based on the user's query string (works even if they press Enter)
+      function runTextSearch(query) {
+        if (!query || !placesService) return;
+        const origin = userPos || map.getCenter();
+        const req = {
+          query,
+          location: origin,
+          radius: Math.max(1000, Math.floor(distanceLimitKm * 1000)) // bias + rough cap
+        };
+        placesService.textSearch(req, (results, status, pagination) => {
+          const list = document.getElementById('results');
+          if (status === google.maps.places.PlacesServiceStatus.OK && results && results.length) {
+            lastPlaces = results.filter(r => r && r.geometry && r.geometry.location);
+            // Fit to results so users immediately see the area of interest
+            const b = new google.maps.LatLngBounds();
+            lastPlaces.forEach(p => b.extend(p.geometry.location));
+            if (!b.isEmpty()) map.fitBounds(b);
+            filterAndRender();
+          } else {
+            clearMarkers();
+            lastPlaces = [];
+            list.innerHTML = `<div class="list-group-item place-card"><strong>No results for "${query}"</strong><div class="text-muted">Try a different term or increase distance.</div></div>`;
+          }
+        });
+      }
 
       // Try to use geolocation for origin
       if (navigator.geolocation) {
@@ -354,6 +387,18 @@
         if (bounds) searchBox.setBounds(bounds);
       });
 
+      // Hook up UI: button click & Enter key
+      const goBtn = document.getElementById('go-btn');
+      goBtn.addEventListener('click', () => runTextSearch(input.value));
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          runTextSearch(input.value);
+        }
+      });
+        if (bounds) searchBox.setBounds(bounds);
+      });
+
       // Distance slider interactions
       distanceSlider.addEventListener('input', () => {
         distanceLimitKm = parseFloat(distanceSlider.value);
@@ -363,9 +408,9 @@
 
       // When user selects a prediction
       searchBox.addListener('places_changed', () => {
-        const places = searchBox.getPlaces() || [];
-        resultsDiv.innerHTML = '';
-        clearMarkers();
+        // Use the user's typed query to run a robust Text Search
+        runTextSearch(input.value);
+      });
         lastPlaces = [];
 
         if (!places.length) return;
@@ -389,5 +434,6 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.4/popper.min.js"></script>
   <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.min.js"></script>
+<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBCDJZDoS6NBc0JYuk11tx7v2kmIKR5I1I&callback=initAutocomplete&libraries=places,geometry&v=weekly" defer></script>
 </body>
 </html>
