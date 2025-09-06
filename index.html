@@ -1,3 +1,4 @@
+```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -101,7 +102,6 @@
     .iw a { color: #0d6efd; text-decoration: none; }
     .iw a:hover { text-decoration: underline; }
     .gm-style .gm-style-iw-c, .gm-style .gm-style-iw-d { color: #111; }
-    .iw .badge-light { color: #222; background-color: #f8f9fa; }
 
     /* Phones */
     @media (max-width: 576px){
@@ -138,20 +138,6 @@
       if (window.google?.maps?.geometry?.spherical) return google.maps.geometry.spherical.computeDistanceBetween(origin, loc);
       return haversineKm(origin, loc)*1000;
     }
-    function formatAge(tsMs){
-      if (!tsMs || isNaN(tsMs)) return "unknown";
-      const now=Date.now(); let diff=Math.max(0, now-tsMs);
-      const day=86400000, year=365.25*day, month=30.44*day;
-      const y=Math.floor(diff/year); diff-=y*year;
-      const m=Math.floor(diff/month); diff-=m*month;
-      const d=Math.floor(diff/day);
-      if (y>=1) return `${y} yr${y>1?'s':''}${m?` ${m} mo`:''}`;
-      if (m>=1) return `${m} mo${d?` ${d} d`:''}`;
-      if (d>=1) return `${d} d`;
-      const h=Math.floor(diff/3600000); if (h>=1) return `${h} hr${h>1?'s':''}`;
-      const min=Math.floor(diff/60000); if (min>=1) return `${min} min`;
-      return "today";
-    }
     function debounce(fn, wait=650){ let t; return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args), wait); }; }
 
     // Heuristic review-rate estimator (local cohort)
@@ -182,6 +168,29 @@
         median: percentile(rates, 0.50),
         p75: percentile(rates, 0.75),
       };
+    }
+
+    // --- Open status computation (more robust) ---
+    function computeOpenState(details){
+      // Prefer business_status semantics first
+      const bs = details?.business_status;
+      if (bs === 'CLOSED_PERMANENTLY') return 'permanently_closed';
+      if (bs === 'CLOSED_TEMPORARILY') return 'temporarily_closed';
+
+      // Try current_opening_hours.isOpen(), then opening_hours.isOpen()
+      const coh = details?.current_opening_hours;
+      if (coh && typeof coh.isOpen === 'function'){
+        try { return coh.isOpen() ? 'open' : 'closed'; } catch(_) {}
+      }
+      const oh = details?.opening_hours;
+      if (oh && typeof oh.isOpen === 'function'){
+        try { return oh.isOpen() ? 'open' : 'closed'; } catch(_) {}
+      }
+      // If Google returned open_now boolean (rare in JS lib), respect it
+      if (typeof details?.opening_hours?.open_now === 'boolean'){
+        return details.opening_hours.open_now ? 'open' : 'closed';
+      }
+      return 'unknown';
     }
 
     // Globals
@@ -268,6 +277,7 @@
 
         // Re-render for user pan/zoom
         let userPan = false, userZoom = false;
+        map.addEventListener?.('dragstart', ()=>{ userPan = true; });
         map.addListener('dragstart', ()=>{ userPan = true; });
         map.addListener('zoom_changed', ()=>{ userZoom = true; });
         map.addListener('idle', ()=>{
@@ -393,7 +403,7 @@
 
     function clearMarkers(){ markers.forEach(m=>m.setMap(null)); markers = []; }
 
-    // Details meta: earliest visible review (lower bound) + fields for heuristic
+    // Details meta (earliest visible review + robust open/closed state)
     function getPlaceMeta(place){
       const pid = place.place_id;
       if (metaCache.has(pid)) return Promise.resolve(metaCache.get(pid));
@@ -402,15 +412,14 @@
       const p = new Promise((resolve)=>{
         try{
           placesService.getDetails(
-            { placeId: pid, fields: ['reviews','user_ratings_total','opening_hours'] },
+            { placeId: pid, fields: ['reviews','user_ratings_total','opening_hours','current_opening_hours','business_status','utc_offset_minutes'] },
             (details, status)=>{
               let meta = { 
                 tsMsUpper: null,      // earliest review we can access (lower bound)
-                ageEstDays: null,     // heuristic estimate (filled later)
+                ageEstDays: null,     // heuristic (filled later)
                 sinceEstTs: null,     // estimated "since"
                 sortTs: null,         // for sorting in "new"
-                source: 'heuristic',
-                isOpen: null
+                openState: 'unknown', // 'open'|'closed'|'temporarily_closed'|'permanently_closed'|'unknown'
               };
 
               try{
@@ -421,12 +430,9 @@
                       .filter(n => n > 0);
                     if (times.length){
                       meta.tsMsUpper = Math.min(...times);
-                      meta.source = 'reviews<=5';
                     }
                   }
-                  if (details.opening_hours && typeof details.opening_hours.isOpen === 'function'){
-                    meta.isOpen = !!details.opening_hours.isOpen();
-                  }
+                  meta.openState = computeOpenState(details);
                 }
               }catch(_){}
 
@@ -437,7 +443,7 @@
             }
           );
         }catch(_){
-          const meta = { tsMsUpper: null, ageEstDays: null, sinceEstTs: null, sortTs: Date.now(), source: 'heuristic', isOpen: null };
+          const meta = { tsMsUpper: null, ageEstDays: null, sinceEstTs: null, sortTs: Date.now(), openState: 'unknown' };
           metaCache.set(pid, meta); metaPending.delete(pid); resolve(meta);
         }
       });
@@ -446,10 +452,10 @@
       return p;
     }
 
-    // InfoWindow HTML (includes age heuristic in "new" mode)
+    // InfoWindow HTML (age label removed; we only show "since" when in New mode)
     function buildInfoHTML(place, meta){
       const mode = currentMode();
-      const showAge = (mode === 'new');
+      const showSince = (mode === 'new');
       const m = meta ?? metaCache.get(place.place_id);
 
       const name = place.name || 'Place';
@@ -458,27 +464,26 @@
       const count = place.user_ratings_total || 0;
       const meters = place.geometry?.location ? distanceMeters(origin, place.geometry.location) : null;
       const dist = meters != null ? `${(meters/1000).toFixed(2)} km` : '';
-      const isOpen = (typeof m?.isOpen === 'boolean') ? m.isOpen : null;
 
-      // Age badges
+      let openBadge = `<span class="badge badge-light">Hours: unknown</span>`;
+      switch(m?.openState){
+        case 'open': openBadge = `<span class="badge badge-success">Open now</span>`; break;
+        case 'closed': openBadge = `<span class="badge badge-danger">Closed</span>`; break;
+        case 'temporarily_closed': openBadge = `<span class="badge badge-warning">Temporarily closed</span>`; break;
+        case 'permanently_closed': openBadge = `<span class="badge badge-dark">Permanently closed</span>`; break;
+      }
+
+      // Since badges (no "age:" label)
       const lbTs = m?.tsMsUpper || null;
-      const estDays = m?.ageEstDays || null;
       const estTs = m?.sinceEstTs || null;
-      const lbAge = lbTs ? formatAge(lbTs) : null;
-
-      let ageBadge = '', sinceBadge = '';
-      if (showAge){
-        if (lbTs && estDays){
-          ageBadge  = `<span class="badge badge-light">age: ≥ ${lbAge} (est. ~ ${formatAge(estTs)})</span>`;
+      let sinceBadge = '';
+      if (showSince){
+        if (estTs && lbTs){
           sinceBadge = `<span class="badge badge-dark">est since: ${new Date(estTs).toLocaleDateString()}</span>`;
         } else if (lbTs){
-          ageBadge  = `<span class="badge badge-light">age: ≥ ${lbAge}</span>`;
           sinceBadge = `<span class="badge badge-dark">first review: ${new Date(lbTs).toLocaleDateString()}</span>`;
-        } else if (estDays){
-          ageBadge  = `<span class="badge badge-light">age: ~ ${formatAge(estTs)}</span>`;
+        } else if (estTs){
           sinceBadge = `<span class="badge badge-dark">est since: ${new Date(estTs).toLocaleDateString()}</span>`;
-        } else {
-          ageBadge  = `<span class="badge badge-light">age: unknown</span>`;
         }
       }
 
@@ -499,12 +504,8 @@
             ${ rating != null ? `<span class="badge badge-warning">★ ${rating}</span>` : '' }
             <span class="badge badge-info">${count} ratings</span>
             ${ dist ? `<span class="badge badge-secondary">${dist}</span>` : '' }
-            ${
-              isOpen === true ? `<span class="badge badge-success">Open now</span>` :
-              isOpen === false ? `<span class="badge badge-danger">Closed</span>` :
-              `<span class="badge badge-light">Hours: unknown</span>`
-            }
-            ${ ageBadge } ${ sinceBadge }
+            ${ openBadge }
+            ${ sinceBadge }
           </div>
           <div class="actions mt-2">
             <a href="${mapsLink}" target="_blank" rel="noopener">Open in Maps</a>
@@ -538,7 +539,7 @@
       clearMarkers();
       const frag = document.createDocumentFragment();
       const mode = currentMode();
-      const showAge = (mode === 'new');
+      const showSince = (mode === 'new');
 
       list.forEach(place=>{
         if (!place.geometry || !place.geometry.location) return;
@@ -548,25 +549,26 @@
         const pid = place.place_id;
         const meta = metaCache.get(pid);
 
-        // Age badges
-        const lbTs = meta?.tsMsUpper || null;
-        const estDays = meta?.ageEstDays || null;
-        const estTs = meta?.sinceEstTs || null;
-        const lbAge = lbTs ? formatAge(lbTs) : null;
+        // Open badge
+        let openHTML = "<p class='text-muted mb-1'><small>Hours: unknown</small></p>";
+        switch(meta?.openState){
+          case 'open': openHTML = "<p class='text-primary mb-1'><small>Open now</small></p>"; break;
+          case 'closed': openHTML = "<p class='text-danger mb-1'><small>Closed</small></p>"; break;
+          case 'temporarily_closed': openHTML = "<p class='text-warning mb-1'><small>Temporarily closed</small></p>"; break;
+          case 'permanently_closed': openHTML = "<p class='text-dark mb-1'><small>Permanently closed</small></p>"; break;
+        }
 
-        let ageBadge = '', sinceBadge = '';
-        if (showAge){
-          if (lbTs && estDays){
-            ageBadge  = `<span class="badge badge-light badge-pill ml-2">age: ≥ ${lbAge} (est. ~ ${formatAge(estTs)})</span>`;
-            sinceBadge = `<span class="badge badge-dark badge-pill ml-2">est since: ${new Date(estTs).toLocaleDateString()}</span>`;
+        // Since badge only (no age label)
+        const lbTs = meta?.tsMsUpper || null;
+        const estTs = meta?.sinceEstTs || null;
+        let sinceBadges = '';
+        if (showSince){
+          if (estTs && lbTs){
+            sinceBadges = `<span class="badge badge-dark badge-pill ml-2">est since: ${new Date(estTs).toLocaleDateString()}</span>`;
           } else if (lbTs){
-            ageBadge  = `<span class="badge badge-light badge-pill ml-2">age: ≥ ${lbAge}</span>`;
-            sinceBadge = `<span class="badge badge-dark badge-pill ml-2">first review: ${new Date(lbTs).toLocaleDateString()}</span>`;
-          } else if (estDays){
-            ageBadge  = `<span class="badge badge-light badge-pill ml-2">age: ~ ${formatAge(estTs)}</span>`;
-            sinceBadge = `<span class="badge badge-dark badge-pill ml-2">est since: ${new Date(estTs).toLocaleDateString()}</span>`;
-          } else {
-            ageBadge  = `<span class="badge badge-light badge-pill ml-2">age: unknown</span>`;
+            sinceBadges = `<span class="badge badge-dark badge-pill ml-2">first review: ${new Date(lbTs).toLocaleDateString()}</span>`;
+          } else if (estTs){
+            sinceBadges = `<span class="badge badge-dark badge-pill ml-2">est since: ${new Date(estTs).toLocaleDateString()}</span>`;
           }
         }
 
@@ -579,10 +581,10 @@
         a.innerHTML = `
           <div class="flex-column">
             <strong class="text-dark">${place.name}</strong>
-            <span class="open-status" data-pid="${pid}"></span>
+            <span class="open-status" data-pid="${pid}">${openHTML}</span>
             <span class="badge badge-info badge-pill">${place.user_ratings_total || 0} ratings</span>
             <span class="badge badge-secondary badge-pill ml-2">${distKm} km</span>
-            ${ showAge ? `${ageBadge} ${sinceBadge}` : "" }
+            ${ sinceBadges }
           </div>
           <div class="image-parent">
             ${ place.photos && place.photos[0] ? `<img src="${place.photos[0].getUrl()}" class="img-fluid" alt="place">` : "" }
@@ -593,24 +595,21 @@
         // Marker + InfoWindow
         markers.push(createMarker(place));
 
-        // Open/closed (and allow meta to fill age badges if not present)
+        // Fill status if not present yet
         const statusEl = a.querySelector(`.open-status[data-pid="${pid}"]`);
-        const setStatusAndMaybeAge = (m) => {
-          if (statusEl) {
-            if (typeof m?.isOpen === 'boolean') {
-              statusEl.innerHTML = m.isOpen
-                ? "<p class='text-primary mb-1'><small>Open now</small></p>"
-                : "<p class='text-danger mb-1'><small>Closed</small></p>";
-            } else {
-              statusEl.innerHTML = "<p class='text-muted mb-1'><small>Hours: unknown</small></p>";
-            }
-          }
-        };
-
-        if (meta) setStatusAndMaybeAge(meta);
-        else {
+        if (!meta){
           statusEl.innerHTML = "<p class='text-muted mb-1'><small>Checking hours…</small></p>";
-          getPlaceMeta(place).then(setStatusAndMaybeAge);
+          getPlaceMeta(place).then(m=>{
+            // Update open status
+            let html = "<p class='text-muted mb-1'><small>Hours: unknown</small></p>";
+            switch(m?.openState){
+              case 'open': html = "<p class='text-primary mb-1'><small>Open now</small></p>"; break;
+              case 'closed': html = "<p class='text-danger mb-1'><small>Closed</small></p>"; break;
+              case 'temporarily_closed': html = "<p class='text-warning mb-1'><small>Temporarily closed</small></p>"; break;
+              case 'permanently_closed': html = "<p class='text-dark mb-1'><small>Permanently closed</small></p>"; break;
+            }
+            statusEl.innerHTML = html;
+          });
         }
       });
 
@@ -689,7 +688,7 @@
         return;
       }
 
-      // "NEW" MODE WITH HEURISTIC
+      // "NEW" MODE WITH HEURISTIC (age label removed; still used for sorting)
       const toFetch = filtered.filter(p => !metaCache.has(p.place_id));
       if (toFetch.length){
         try { await Promise.all(toFetch.map(p => getPlaceMeta(p))); }
@@ -751,7 +750,7 @@
         <button class="btn btn-sm btn-outline-info" data-mode="new" title="Newest places first">New places</button>
         <div class="hint mt-1">
           Top = by number of ratings. New = estimated from earliest visible review + local review rate;
-          actual age may be older.
+          actual age may be older. (We only display “since”, not “age”.)
         </div>
       </div>
 
@@ -779,3 +778,4 @@
   </script>
 </body>
 </html>
+```
