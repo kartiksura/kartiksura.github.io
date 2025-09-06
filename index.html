@@ -13,17 +13,11 @@
   <meta charset="UTF-8" />
   <title>Find popular places around you</title>
 
-  <link rel="apple-touch-icon" type="image/png" href="https://cpwebassets.codepen.io/assets/favicon/apple-touch-icon-5ae1a0698dcc2402e9712f7d01ed509a57814f994c660df9f7a952f3060705ee.png" />
-  <meta name="apple-mobile-web-app-title" content="CodePen" />
-  <link rel="shortcut icon" type="image/x-icon" href="https://cpwebassets.codepen.io/assets/favicon/favicon-aec34940fbc1a6e787974dcd360f2c6b63348d4b1f4e06c77743096d55480f33.ico" />
-  <link rel="mask-icon" type="image/x-icon" href="https://cpwebassets.codepen.io/assets/favicon/logo-pin-8f3771b1072e3c38bd662872f6b673a722f4b3ca2421637d5596661b4e2132cc.svg" color="#111" />
-
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.1.2/css/bootstrap.min.css" />
   <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.3.1/css/all.css" />
 
   <style>
     body { background: #000; font-family: "Open Sans", sans-serif; }
-    #header { width: 100%; height: 200px; background: #000; }
     .searchTerm {
       width: 100%; border: 3px solid #00b4cc; padding: 5px; height: 60px;
       border-radius: 5px; outline: none; font-size: 20px;
@@ -33,7 +27,7 @@
     .list-group { font-size: 18px; color: #000; }
     .hint { font-size: 12px; opacity: 0.75; }
 
-    /* --- Thicker, easier-to-grab slider --- */
+    /* Thicker, easier-to-grab slider */
     #distance-slider {
       -webkit-appearance: none;
       width: 100%;
@@ -44,20 +38,15 @@
       touch-action: pan-y;
     }
     #distance-slider:focus { outline: none; }
-
-    /* WebKit */
     #distance-slider::-webkit-slider-runnable-track {
       height: 16px; background: #1b1b1b; border-radius: 10px; border: 1px solid #00b4cc;
     }
     #distance-slider::-webkit-slider-thumb {
       -webkit-appearance: none;
-      margin-top: -6px;
-      width: 28px; height: 28px; border-radius: 50%;
+      margin-top: -6px; width: 28px; height: 28px; border-radius: 50%;
       background: #00b4cc; border: 2px solid #66e0ef; box-shadow: 0 0 0 3px rgba(0,180,204,0.15);
     }
     #distance-slider:active::-webkit-slider-thumb { transform: scale(1.05); }
-
-    /* Firefox */
     #distance-slider::-moz-range-track {
       height: 16px; background: #1b1b1b; border-radius: 10px; border: 1px solid #00b4cc;
     }
@@ -65,8 +54,6 @@
       width: 28px; height: 28px; border-radius: 50%;
       background: #00b4cc; border: 2px solid #66e0ef; box-shadow: 0 0 0 3px rgba(0,180,204,0.15);
     }
-
-    /* Old Edge / IE */
     #distance-slider::-ms-track { height: 16px; background: transparent; border-color: transparent; color: transparent; }
     #distance-slider::-ms-fill-lower, #distance-slider::-ms-fill-upper {
       height: 16px; background: #1b1b1b; border: 1px solid #00b4cc; border-radius: 10px;
@@ -78,13 +65,11 @@
 </head>
 
 <body translate="no">
-  <h1 class="text-warning text-center">Find popular places</h1>
-  <h4 class="text-secondary text-center">Filter by distance and choose Top or New places.</h4>
+  <div class="container pt-3">
+    <h1 class="text-warning text-center">Find popular places</h1>
+    <h4 class="text-secondary text-center">Filter by distance and choose Top or New places.</h4>
 
-  <div id="header"></div>
-
-  <div class="container">
-    <!-- DEFAULT FOCUS -->
+    <!-- Search box stays above the map (we do NOT push it into map controls) -->
     <input id="pac-input" class="searchTerm" placeholder="E.g. Cafes near Whitefield" autofocus />
 
     <!-- Sorting mode toggle -->
@@ -97,14 +82,14 @@
           <input type="radio" name="modeOptions" id="mode-new" value="new" autocomplete="off"> New places
         </label>
       </div>
-      <div class="hint mt-1">Top = by number of ratings. New = earliest review date (fallback: unknown).</div>
+      <div class="hint mt-1">Top = by number of ratings. New = earliest review date (fallback shown as “unknown”).</div>
     </div>
 
     <!-- Distance slider UI -->
     <div class="mt-2 text-light">
       <label for="distance-slider">Max distance: <span id="distance-value">5</span> km</label>
       <input type="range" id="distance-slider" min="1" max="50" value="5" step="1" />
-      <div class="hint mt-1">Distance is measured from your location (if allowed) or the current map center.</div>
+      <div class="hint mt-1">Measured from your location (if allowed) or the current map center.</div>
     </div>
 
     <!-- Map + Results -->
@@ -112,19 +97,13 @@
       <div id="map" class="mb-3"></div>
       <div id="results" class="list-group"></div>
     </div>
-
-    <div class="footer mt-3">
-      <p class="text-secondary text-center">There are alternative algorithms (e.g., weight by 5★ count).</p>
-      <p class="text-center"><a href="https://forms.gle/HCXEhe5EnspUp5778">Share feedback / feature requests</a></p>
-    </div>
   </div>
 
-  <!-- Dependencies -->
+  <!-- Deps -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.4/popper.min.js"></script>
   <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.min.js"></script>
 
-  <!-- App logic -->
   <script>
     // @ts-nocheck
 
@@ -184,11 +163,12 @@
       let lastPlaces = [];
       let origin = map.getCenter();
       const placesService = new google.maps.places.PlacesService(map);
+      const searchBox = new google.maps.places.SearchBox(input); // for suggestions only (we won't push it into map controls)
 
       // Age cache: place_id -> { score, tsMs, source }
       const ageCache = new Map();
       const agePending = new Map();
-      let renderSeq = 0; // guard to avoid stale re-renders
+      let renderSeq = 0;
 
       function currentMode() {
         const sel = document.querySelector('input[name="modeOptions"]:checked');
@@ -214,14 +194,11 @@
         });
       }
 
-      // SearchBox
-      const searchBox = new google.maps.places.SearchBox(input);
-      map.controls[google.maps.ControlPosition.TOP_LEFT].push(input);
-
-      // Keep focus after Maps moves input into controls
+      // Keep focus (some browsers drop it briefly)
       setTimeout(() => { input.focus(); input.select(); }, 0);
       google.maps.event.addListenerOnce(map, 'idle', () => { input.focus(); input.select(); });
 
+      // Bias textSearch to current viewport
       map.addListener("bounds_changed", () => searchBox.setBounds(map.getBounds()));
       map.addListener("idle", () => {
         origin = map.getCenter();
@@ -243,10 +220,6 @@
       // Mode change (delegated)
       modeContainer.addEventListener("change", e => {
         if (e.target && e.target.name === "modeOptions") renderPlaces(lastPlaces, {force:true});
-      });
-      modeContainer.addEventListener("click", e => {
-        const inputEl = e.target.closest('input[name="modeOptions"]');
-        if (inputEl) setTimeout(() => renderPlaces(lastPlaces, {force:true}), 0);
       });
 
       function clearMarkers() { markers.forEach(m => m.setMap(null)); markers = []; }
@@ -327,11 +300,8 @@
           `;
           frag.appendChild(a);
 
-          // Marker
-          const icon = { url: place.icon, size: new google.maps.Size(71,71),
-                         origin: new google.maps.Point(0,0), anchor: new google.maps.Point(17,34),
-                         scaledSize: new google.maps.Size(25,25) };
-          markers.push(new google.maps.Marker({ map, icon, title: place.name, position: place.geometry.location }));
+          // Marker (use default icon to avoid icon schema differences)
+          markers.push(new google.maps.Marker({ map, title: place.name, position: place.geometry.location }));
         });
 
         resultsEl.appendChild(frag);
@@ -361,7 +331,6 @@
         if (mode === "top") {
           filtered.sort((a,b) => (b.user_ratings_total || 0) - (a.user_ratings_total || 0));
         } else {
-          // If metas already exist for all, sort now
           const haveAllMetas = filtered.every(p => ageCache.has(p.place_id));
           if (haveAllMetas) {
             filtered = filtered
@@ -394,12 +363,39 @@
         }
       }
 
-      // When a place prediction is chosen
-      searchBox.addListener("places_changed", () => {
-        const places = searchBox.getPlaces() || [];
-        lastPlaces = Array.isArray(places) ? places : [];
-        renderPlaces(lastPlaces, {force:true});
+      // --- TEXT SEARCH DRIVER ---
+      function runTextSearch(query) {
+        const q = (query || '').trim();
+        if (!q) return;
+        resultsEl.innerHTML = `<div class="list-group-item">Searching…</div>`;
+
+        const req = {
+          query: q,
+          location: origin,
+          radius: parseFloat(slider.value) * 1000 // bias by current max distance
+        };
+
+        placesService.textSearch(req, (results, status, pagination) => {
+          if (status !== google.maps.places.PlacesServiceStatus.OK || !results) {
+            resultsEl.innerHTML = `<div class="list-group-item">No results found.</div>`;
+            return;
+          }
+          // Use first page immediately; you can optionally fetch more pages if needed
+          lastPlaces = results;
+          renderPlaces(lastPlaces, {force:true});
+        });
+      }
+
+      // Trigger search when:
+      // 1) user presses Enter
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          runTextSearch(input.value);
+        }
       });
+      // 2) user selects a suggestion (we just run a text search with whatever is typed)
+      searchBox.addListener("places_changed", () => runTextSearch(input.value));
     }
 
     window.initAutocomplete = initAutocomplete;
