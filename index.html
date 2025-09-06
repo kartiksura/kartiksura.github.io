@@ -1,6 +1,3 @@
-Absolutely—here’s the full file with a rich **InfoWindow** when you click any map pin (name, address, rating + count, distance, open/closed, and—only in **New** mode—age & since). Your API key is included in the loader.
-
-```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -21,16 +18,36 @@ Absolutely—here’s the full file with a rich **InfoWindow** when you click an
 
   <style>
     body { background: #000; font-family: "Open Sans", sans-serif; }
-    .searchTerm {
-      width: 100%; border: 3px solid #00b4cc; padding: 5px; height: 60px;
-      border-radius: 5px; outline: none; font-size: 20px;
-    }
-    #map { height: 260px; border-radius: 6px; }
-    .image-parent { max-width: 190px; }
     .list-group { font-size: 18px; color: #000; }
     .hint { font-size: 12px; opacity: 0.75; }
     .btn-toggle .btn { cursor: pointer; }
     .notice { font-size: 12px; color: #ddd; margin: 6px 0 0; }
+    #map { height: 260px; border-radius: 6px; }
+    .image-parent { max-width: 190px; }
+
+    /* Search bar + button */
+    .searchTerm {
+      border: 3px solid #00b4cc;
+      padding: 5px;
+      height: 60px;
+      outline: none;
+      font-size: 20px;
+      border-radius: 5px; /* default when not in input-group */
+    }
+    /* In input-group, align side-by-side cleanly */
+    .input-group .searchTerm {
+      width: auto;               /* allow flex sizing */
+      flex: 1 1 auto;
+      border-top-right-radius: 0;
+      border-bottom-right-radius: 0;
+    }
+    #go-btn {
+      height: 60px;              /* match input height */
+      border-top-left-radius: 0;
+      border-bottom-left-radius: 0;
+      border: 3px solid #00b4cc; /* match input border */
+      border-left: 0;            /* seamless join */
+    }
 
     /* Thicker slider */
     #distance-slider {
@@ -187,9 +204,16 @@ Absolutely—here’s the full file with a rich **InfoWindow** when you click an
 
       // Bias text search to viewport
       map.addListener("bounds_changed", ()=> searchBox.setBounds(map.getBounds()));
-      map.addListener("idle", ()=>{
+
+      // Only re-render for *user* pan/zoom (prevents InfoWindow auto-close)
+      let userPan = false, userZoom = false;
+      map.addListener('dragstart', ()=>{ userPan = true; });
+      map.addListener('zoom_changed', ()=>{ userZoom = true; });
+      map.addListener('idle', ()=>{
+        if (!(userPan || userZoom)) return;
         origin = map.getCenter();
         radiusCircle.setCenter(origin);
+        userPan = false; userZoom = false;
         if (lastPlaces.length) renderPlaces(lastPlaces, {resultsEl, slider, noticeEl});
       });
 
@@ -438,7 +462,7 @@ Absolutely—here’s the full file with a rich **InfoWindow** when you click an
         // Marker with InfoWindow click
         markers.push(createMarker(place));
 
-        // Open/closed label handling + (if New) age/since updates after details arrive
+        // Open/closed + (if New) age/since updates after details arrive
         const statusEl = a.querySelector(`.open-status[data-pid="${pid}"]`);
         const setStatusAndMaybeAge = (m) => {
           if (statusEl) {
@@ -505,7 +529,7 @@ Absolutely—here’s the full file with a rich **InfoWindow** when you click an
 
       resultsEl.innerHTML = "";
       clearMarkers();
-      infoWin && infoWin.close();
+      // Keep infoWin open on pin click
       if (!places || !places.length) return;
 
       smartOriginAndRadius(places, slider, noticeEl);
@@ -584,9 +608,9 @@ Absolutely—here’s the full file with a rich **InfoWindow** when you click an
     <h1 class="text-warning text-center">Find popular places</h1>
     <h4 class="text-secondary text-center">Filter by distance and choose Top or New places.</h4>
 
-    <!-- Input + explicit Search button -->
+    <!-- Input + explicit Search button (side-by-side) -->
     <div class="input-group">
-      <input id="pac-input" class="searchTerm" placeholder="E.g. Cafes near Whitefield" autofocus />
+      <input id="pac-input" class="form-control searchTerm" placeholder="E.g. Cafes near Whitefield" autofocus />
       <div class="input-group-append">
         <button id="go-btn" class="btn btn-info" type="button">Search</button>
       </div>
@@ -614,11 +638,10 @@ Absolutely—here’s the full file with a rich **InfoWindow** when you click an
     </div>
   </div>
 
-  <!-- Google Maps API with YOUR KEY visible below -->
+  <!-- Google Maps API with YOUR KEY -->
   <script
     src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBCDJZDoS6NBc0JYuk11tx7v2kmIKR5I1I&libraries=places,geometry&v=weekly&callback=gmapsReady"
     async defer onerror="console.error('[gmaps] failed to load JS');">
   </script>
 </body>
 </html>
-```
