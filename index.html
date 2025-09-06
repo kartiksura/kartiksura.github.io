@@ -76,8 +76,31 @@
       }
 
       const input = document.getElementById("pac-input");
-      const searchBox = new google.maps.places.SearchBox(input);
-      map.addListener("bounds_changed", () => searchBox.setBounds(map.getBounds()));
+      const autocomplete = new google.maps.places.Autocomplete(input);
+      autocomplete.bindTo('bounds', map);
+      const service = new google.maps.places.PlacesService(map);
+
+      function performSearch() {
+        const query = input.value.trim();
+        if (!query) return;
+        service.textSearch({ query, bounds: map.getBounds() }, (results, status) => {
+          lastPlaces = (status === google.maps.places.PlacesServiceStatus.OK && results) ? results : [];
+          renderPlaces();
+        });
+      }
+
+      autocomplete.addListener("place_changed", () => {
+        const place = autocomplete.getPlace();
+        if (place && place.geometry) {
+          if (place.geometry.viewport) map.fitBounds(place.geometry.viewport);
+          else { map.setCenter(place.geometry.location); map.setZoom(15); }
+        }
+        performSearch();
+      });
+
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); performSearch(); }
+      });
 
       let markers = [];
       let lastPlaces = [];
@@ -164,10 +187,7 @@
         if (!bounds.isEmpty()) map.fitBounds(bounds);
       }
 
-      searchBox.addListener("places_changed", () => {
-        lastPlaces = searchBox.getPlaces() || [];
-        renderPlaces();
-      });
+      // Autocomplete + textSearch handles place changes and Enter key
 
       distanceSelect.addEventListener('change', renderPlaces);
     }
