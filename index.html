@@ -13,7 +13,7 @@
   <meta charset="UTF-8" />
   <title>Find popular places around you</title>
 
-  <!-- Only CSS (no external JS to avoid 'export' errors) -->
+  <!-- Only CSS to avoid any "export" JS errors -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.1.2/css/bootstrap.min.css" />
 
   <style>
@@ -71,7 +71,7 @@
     <div class="mt-2 text-light btn-toggle" id="mode-container" role="group" aria-label="Sort mode">
       <button class="btn btn-sm btn-outline-info active" data-mode="top" title="Sort by number of ratings">Top places</button>
       <button class="btn btn-sm btn-outline-info" data-mode="new" title="Newest places first">New places</button>
-      <div class="hint mt-1">Top = by number of ratings. New = earliest review date (fallback shown as “unknown”).</div>
+      <div class="hint mt-1">Top = by number of ratings. New = earliest review date (fallback shows “unknown”).</div>
     </div>
 
     <!-- Distance slider UI -->
@@ -125,6 +125,12 @@
       return "today";
     }
 
+    // Small debounce utility
+    function debounce(fn, wait=600){
+      let t; return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args), wait); };
+    }
+
+    // Globals used by handlers
     let map, placesService, searchBox;
     let markers = [];
     let lastPlaces = [];
@@ -143,9 +149,251 @@
       });
     }
 
-    function initAutocomplete(){
+    // ---- Main init, run after Maps JS loads ----
+    function initApp(){
+      console.log('[gmaps] JS loaded, init app');
       const resultsEl = document.getElementById("results");
       const input = document.getElementById("pac-input");
       const slider = document.getElementById("distance-slider");
       const distanceValue = document.getElementById("distance-value");
-      const modeContainer = document.getElement
+      const modeContainer = document.getElementById("mode-container");
+
+      map = new google.maps.Map(document.getElementById("map"), {
+        center: { lat: -33.8688, lng: 151.2195 }, zoom: 15, mapTypeId: "roadmap"
+      });
+      placesService = new google.maps.places.PlacesService(map);
+      searchBox = new google.maps.places.SearchBox(input); // suggestions only; we won't move the input
+
+      origin = map.getCenter();
+
+      // Visual distance circle
+      const radiusCircle = new google.maps.Circle({
+        map, center: origin, radius: parseFloat(slider.value)*1000,
+        strokeColor: "#00b4cc", strokeOpacity: 0.8, strokeWeight: 1,
+        fillColor: "#00b4cc", fillOpacity: 0.08, clickable: false
+      });
+
+      // Geolocation origin
+      if (navigator.geolocation){
+        const t = setTimeout(geolocFail, 10000);
+        navigator.geolocation.getCurrentPosition(pos=>{
+          clearTimeout(t);
+          origin = new google.maps.LatLng(pos.coords.latitude, pos.coords.longitude);
+          map.setCenter(origin);
+          radiusCircle.setCenter(origin);
+          if (lastPlaces.length) renderPlaces(lastPlaces, {resultsEl, slider});
+        });
+      }
+
+      // Keep focus stable
+      setTimeout(()=>{ input.focus(); input.select(); }, 0);
+      google.maps.event.addListenerOnce(map, 'idle', ()=>{ input.focus(); input.select(); });
+
+      // Bias text search to viewport
+      map.addListener("bounds_changed", ()=> searchBox.setBounds(map.getBounds()));
+      map.addListener("idle", ()=>{
+        origin = map.getCenter();
+        radiusCircle.setCenter(origin);
+        if (lastPlaces.length) renderPlaces(lastPlaces, {resultsEl, slider});
+      });
+
+      // Distance slider
+      const onDistanceChanged = ()=>{
+        const km = parseFloat(slider.value);
+        distanceValue.textContent = km;
+        radiusCircle.setRadius(km*1000);
+        if (lastPlaces.length) renderPlaces(lastPlaces, {resultsEl, slider});
+      };
+      distanceValue.textContent = slider.value;
+      slider.addEventListener("input", onDistanceChanged);
+      slider.addEventListener("change", onDistanceChanged);
+
+      // Mode toggle (vanilla)
+      modeContainer.addEventListener('click', (e)=>{
+        const btn = e.target.closest('.btn[data-mode]');
+        if (!btn) return;
+        setModeButtons(btn.dataset.mode);
+        if (lastPlaces.length) renderPlaces(lastPlaces, {resultsEl, slider});
+      });
+
+      // Text search driver
+      function runTextSearch(query){
+        const q = (query||'').trim();
+        if (!q) return;
+        console.log('[gmaps] textSearch:', q);
+        resultsEl.innerHTML = `<div class="list-group-item">Searching…</div>`;
+        const req = { query: q, location: origin, radius: parseFloat(slider.value)*1000 };
+        placesService.textSearch(req, (results, status)=>{
+          console.log('[gmaps] textSearch status:', status, results?.length);
+          if (status !== google.maps.places.PlacesServiceStatus.OK || !results){
+            resultsEl.innerHTML = `<div class="list-group-item">No results found.</div>`;
+            return;
+          }
+          lastPlaces = results;
+          renderPlaces(lastPlaces, {resultsEl, slider});
+        });
+      }
+
+      // Enter triggers search
+      input.addEventListener('keydown', (e)=>{
+        if (e.key === 'Enter'){
+          e.preventDefault();
+          runTextSearch(input.value);
+        }
+      });
+      // As-you-type (debounced) triggers search too
+      input.addEventListener('input', debounce(()=> runTextSearch(input.value), 650));
+      // Selecting a suggestion also triggers text search with whatever is typed
+      searchBox.addListener("places_changed", ()=> runTextSearch(input.value));
+    }
+
+    function clearMarkers(){ markers.forEach(m=>m.setMap(null)); markers = []; }
+
+    // Safely fetch "newness" meta; never rejects
+    function getNewnessMeta(place){
+      const pid = place.place_id;
+      if (ageCache.has(pid)) return Promise.resolve(ageCache.get(pid));
+      if (agePending.has(pid)) return agePending.get(pid);
+
+      const p = new Promise((resolve)=>{
+        try{
+          placesService.getDetails(
+            { placeId: pid, fields: ['reviews','user_ratings_total'] },
+            (details, status)=>{
+              let meta = { score: 0, tsMs: null, source: 'heuristic' };
+              try{
+                if (status === google.maps.places.PlacesServiceStatus.OK &&
+                    details && Array.isArray(details.reviews) && details.reviews.length){
+                  const times = details.reviews.map(r=> r && r.time ? r.time*1000 : 0).filter(n=>n>0);
+                  if (times.length){
+                    const firstTsMs = Math.min(...times);
+                    meta = { score: firstTsMs, tsMs: firstTsMs, source: 'review' };
+                  }
+                }
+                if (!meta.tsMs){
+                  // no reviews -> unknown age; keep a heuristic score for sorting only
+                  meta = { score: Date.now() - (place.user_ratings_total || 0)*86400000, tsMs: null, source: 'heuristic' };
+                }
+              }catch(_){}
+              ageCache.set(pid, meta); agePending.delete(pid); resolve(meta);
+            }
+          );
+        }catch(_){
+          const meta = { score: Date.now(), tsMs: null, source: 'heuristic' };
+          ageCache.set(pid, meta); agePending.delete(pid); resolve(meta);
+        }
+      });
+      agePending.set(pid, p);
+      return p;
+    }
+
+    function paintList(list, {resultsEl}){
+      resultsEl.innerHTML = "";
+      const frag = document.createDocumentFragment();
+
+      list.forEach(place=>{
+        if (!place.geometry || !place.geometry.location) return;
+
+        const meters = distanceMeters(origin, place.geometry.location);
+        const distKm = (meters/1000).toFixed(2);
+        const pid = place.place_id;
+        const meta = ageCache.get(pid);
+        const ageText = meta && meta.tsMs ? formatAge(meta.tsMs) : "unknown";
+        const sinceText = meta && meta.tsMs ? new Date(meta.tsMs).toLocaleDateString() : "";
+
+        const a = document.createElement("a");
+        a.className = "list-group-item list-group-item-action d-flex justify-content-between align-items-center";
+        a.href = "https://www.google.com/maps/search/?api=1&query=" +
+                 encodeURIComponent(place.formatted_address || place.name) +
+                 "&query_place_id=" + place.place_id;
+
+        a.innerHTML = `
+          <div class="flex-column">
+            <strong class="text-dark">${place.name}</strong>
+            ${ getValue(place, ["opening_hours","open_now"]) === true
+                ? "<p class='text-primary mb-1'><small>Open now</small></p>"
+                : "<p class='text-danger mb-1'><small>Closed</small></p>" }
+            <span class="badge badge-info badge-pill">${place.user_ratings_total || 0} ratings</span>
+            <span class="badge badge-secondary badge-pill ml-2">${distKm} km</span>
+            <span class="badge badge-light badge-pill ml-2">age: ${ageText}</span>
+            ${ sinceText ? `<span class="badge badge-dark badge-pill ml-2">since ${sinceText}</span>` : "" }
+          </div>
+          <div class="image-parent">
+            ${ place.photos && place.photos[0] ? `<img src="${place.photos[0].getUrl()}" class="img-fluid" alt="place">` : "" }
+          </div>
+        `;
+        frag.appendChild(a);
+
+        // Marker (default icon is safest)
+        markers.push(new google.maps.Marker({ map, title: place.name, position: place.geometry.location }));
+      });
+
+      resultsEl.appendChild(frag);
+    }
+
+    async function renderPlaces(places, {resultsEl, slider}){
+      const mySeq = ++renderSeq;
+
+      resultsEl.innerHTML = "";
+      clearMarkers();
+      if (!places || !places.length) return;
+
+      const mode = currentMode();
+      const maxKm = parseFloat(slider.value);
+
+      let filtered = places.filter(p =>
+        p.geometry && p.geometry.location &&
+        distanceMeters(origin, p.geometry.location) <= maxKm*1000
+      );
+
+      if (!filtered.length){
+        if (mySeq !== renderSeq) return;
+        resultsEl.innerHTML = `<div class="list-group-item">No results within ${maxKm} km.</div>`;
+        return;
+      }
+
+      if (mode === "top"){
+        filtered.sort((a,b) => (b.user_ratings_total || 0) - (a.user_ratings_total || 0));
+      } else {
+        const haveAllMetas = filtered.every(p => ageCache.has(p.place_id));
+        if (haveAllMetas){
+          filtered = filtered
+            .map(p => ({ p, m: ageCache.get(p.place_id) }))
+            .sort((a,b) => (b.m.score - a.m.score))
+            .map(x => x.p);
+        }
+      }
+
+      if (mySeq !== renderSeq) return;
+      paintList(filtered, {resultsEl});
+
+      if (mode === "new"){
+        const toFetch = filtered.filter(p => !ageCache.has(p.place_id));
+        if (toFetch.length){
+          try{
+            await Promise.all(toFetch.map(p => getNewnessMeta(p)));
+            if (mySeq !== renderSeq) return;
+            const resorted = filtered
+              .map(p => ({ p, m: ageCache.get(p.place_id) }))
+              .sort((a,b) => (b.m.score - a.m.score))
+              .map(x => x.p);
+            if (mySeq !== renderSeq) return;
+            paintList(resorted, {resultsEl});
+          }catch(err){
+            console.warn('Age fetch error (ignored):', err);
+          }
+        }
+      }
+    }
+
+    // Expose init function for the script onload
+    window.initApp = initApp;
+  </script>
+
+  <!-- Google Maps API: load with onload (no callback param). -->
+  <script
+    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBCDJZDoS6NBc0JYuk11tx7v2kmIKR5I1I&libraries=places,geometry"
+    async defer onload="initApp()" onerror="console.error('[gmaps] failed to load JS');">
+  </script>
+</body>
+</html>
