@@ -11,30 +11,47 @@
   </script>
 
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Find popular places around you</title>
 
   <!-- CSS only -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.1.2/css/bootstrap.min.css" />
 
   <style>
-    body { background: #000; font-family: "Open Sans", sans-serif; }
-    .list-group { font-size: 18px; color: #000; }
-    .hint { font-size: 12px; opacity: 0.75; }
-    .btn-toggle .btn { cursor: pointer; }
-    .notice { font-size: 12px; color: #ddd; margin: 6px 0 0; }
-    #map { height: 260px; border-radius: 6px; }
-    .image-parent { max-width: 190px; }
+    :root{
+      --accent:#00b4cc;
+      --accent-soft:#66e0ef;
+      --bg:#000;
+      --text:#fff;
+      --muted:#ddd;
+    }
+    html,body{ height:100%; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Open Sans", system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Apple Color Emoji","Segoe UI Emoji";
+      -webkit-text-size-adjust: 100%;
+    }
+
+    /* Shell spacing */
+    .app {
+      padding-top: 12px;
+      padding-bottom: 16px;
+    }
+
+    /* Title */
+    h1.text-warning{ font-size: clamp(1.25rem, 2.8vw, 1.8rem); }
+    h4.text-secondary{ font-size: clamp(0.95rem, 2.2vw, 1.1rem); }
 
     /* Search bar + button */
     .searchTerm {
-      border: 3px solid #00b4cc;
-      padding: 5px;
-      height: 60px;
+      border: 3px solid var(--accent);
+      padding: 8px 12px;
+      height: 56px;
       outline: none;
-      font-size: 20px;
+      font-size: 18px;
       border-radius: 5px; /* default when not in input-group */
     }
-    /* In input-group, align side-by-side cleanly */
     .input-group .searchTerm {
       width: auto;               /* allow flex sizing */
       flex: 1 1 auto;
@@ -42,49 +59,93 @@
       border-bottom-right-radius: 0;
     }
     #go-btn {
-      height: 60px;              /* match input height */
+      height: 56px;              /* match input height */
       border-top-left-radius: 0;
       border-bottom-left-radius: 0;
-      border: 3px solid #00b4cc; /* match input border */
-      border-left: 0;            /* seamless join */
+      border: 3px solid var(--accent);
+      border-left: 0;
+      font-weight: 600;
+      white-space: nowrap;
     }
 
-    /* Thicker slider */
+    /* Sticky filters on mobile (keeps search & controls visible) */
+    .sticky-controls{
+      position: sticky;
+      top: 0; z-index: 3;
+      background: linear-gradient(180deg, rgba(0,0,0,0.92), rgba(0,0,0,0.92));
+      padding-top: 6px;
+      padding-bottom: 8px;
+    }
+
+    .hint { font-size: 12px; opacity: 0.8; }
+    .notice { font-size: 12px; color: var(--muted); margin: 6px 0 0; }
+    .btn-toggle .btn { cursor: pointer; margin-right: 6px; margin-top: 6px; }
+
+    /* Map */
+    #map {
+      height: clamp(220px, 42vh, 420px);
+      border-radius: 8px;
+    }
+
+    /* Results list */
+    .list-group { font-size: 16px; color: #000; }
+    .list-group-item strong { font-size: 16px; }
+    .image-parent { max-width: 180px; }
+    .image-parent img { border-radius: 6px; }
+
+    /* Thicker slider (touch-friendly) */
     #distance-slider {
-      -webkit-appearance: none; width: 100%; height: 16px; background: transparent; margin: 6px 0;
+      -webkit-appearance: none; width: 100%; height: 18px; background: transparent; margin: 6px 0;
       cursor: pointer; touch-action: pan-y;
     }
     #distance-slider:focus { outline: none; }
     #distance-slider::-webkit-slider-runnable-track {
-      height: 16px; background: #1b1b1b; border-radius: 10px; border: 1px solid #00b4cc;
+      height: 18px; background: #1b1b1b; border-radius: 10px; border: 1px solid var(--accent);
     }
     #distance-slider::-webkit-slider-thumb {
-      -webkit-appearance: none; margin-top: -6px; width: 28px; height: 28px; border-radius: 50%;
-      background: #00b4cc; border: 2px solid #66e0ef; box-shadow: 0 0 0 3px rgba(0,180,204,0.15);
+      -webkit-appearance: none; margin-top: -6px; width: 30px; height: 30px; border-radius: 50%;
+      background: var(--accent); border: 2px solid var(--accent-soft); box-shadow: 0 0 0 3px rgba(0,180,204,0.15);
     }
     #distance-slider:active::-webkit-slider-thumb { transform: scale(1.05); }
     #distance-slider::-moz-range-track {
-      height: 16px; background: #1b1b1b; border-radius: 10px; border: 1px solid #00b4cc;
+      height: 18px; background: #1b1b1b; border-radius: 10px; border: 1px solid var(--accent);
     }
     #distance-slider::-moz-range-thumb {
-      width: 28px; height: 28px; border-radius: 50%;
-      background: #00b4cc; border: 2px solid #66e0ef; box-shadow: 0 0 0 3px rgba(0,180,204,0.15);
+      width: 30px; height: 30px; border-radius: 50%;
+      background: var(--accent); border: 2px solid var(--accent-soft); box-shadow: 0 0 0 3px rgba(0,180,204,0.15);
     }
-    #distance-slider::-ms-track { height: 16px; background: transparent; border-color: transparent; color: transparent; }
+    #distance-slider::-ms-track { height: 18px; background: transparent; border-color: transparent; color: transparent; }
     #distance-slider::-ms-fill-lower, #distance-slider::-ms-fill-upper {
-      height: 16px; background: #1b1b1b; border: 1px solid #00b4cc; border-radius: 10px;
+      height: 18px; background: #1b1b1b; border: 1px solid var(--accent); border-radius: 10px;
     }
     #distance-slider::-ms-thumb {
-      width: 28px; height: 28px; border-radius: 50%; background: #00b4cc; border: 2px solid #66e0ef;
+      width: 30px; height: 30px; border-radius: 50%; background: var(--accent); border: 2px solid var(--accent-soft);
     }
 
     /* InfoWindow content */
-    .iw { font-family: "Open Sans", sans-serif; max-width: 280px; }
-    .iw h6 { margin: 0 0 4px; font-weight: 700; }
+    .iw { font-family: "Open Sans", sans-serif; max-width: 300px; }
+    .iw h6 { margin: 0 0 4px; font-weight: 700; font-size: 15px; }
     .iw .meta { font-size: 13px; color: #444; }
     .iw .badges .badge { margin-right: 6px; margin-top: 6px; }
     .iw img.thumb { width: 100%; border-radius: 6px; margin-top: 8px; }
     .iw .actions a { font-size: 13px; margin-right: 10px; }
+
+    /* Small screens (phones) */
+    @media (max-width: 576px){
+      .app{ padding-left: 10px; padding-right: 10px; }
+      .list-group-item{ padding: 10px 12px; }
+      .list-group-item strong{ display:block; margin-bottom: 2px; }
+      .image-parent{ max-width: 120px; }
+      #go-btn{ height: 56px; padding-left: 14px; padding-right: 14px; }
+      .btn-toggle .btn{ font-size: 14px; padding: 6px 10px; }
+      #map{ height: clamp(220px, 48vh, 420px); }
+    }
+
+    /* Larger phones / small tablets */
+    @media (min-width: 577px) and (max-width: 820px){
+      .image-parent{ max-width: 150px; }
+      #map{ height: clamp(240px, 46vh, 460px); }
+    }
   </style>
 
   <script>
@@ -299,6 +360,13 @@
       input.addEventListener('input', debounce(()=> runTextSearch(input.value), 650));
       searchBox.addListener("places_changed", ()=> runTextSearch(input.value));
       goBtn.addEventListener('click', ()=> runTextSearch(input.value));
+
+      // Handle orientation/resize: nudge map to recalc tiles
+      window.addEventListener('resize', debounce(()=>{
+        const c = map.getCenter();
+        google.maps.event.trigger(map, 'resize');
+        map.setCenter(c);
+      }, 200));
     }
 
     function clearMarkers(){ markers.forEach(m=>m.setMap(null)); markers = []; }
@@ -410,7 +478,7 @@
       marker.addListener('click', async () => {
         let meta = metaCache.get(place.place_id);
         if (!meta) {
-          // Show a quick skeleton while fetching
+          // Skeleton while fetching
           infoWin.setContent(`<div class="iw"><h6>${place.name}</h6><div class="meta">Loading details…</div></div>`);
           infoWin.open(map, marker);
           try { meta = await getPlaceMeta(place); } catch(_) {}
@@ -421,6 +489,8 @@
 
       return marker;
     }
+
+    function clearMarkers(){ markers.forEach(m=>m.setMap(null)); markers = []; }
 
     function paintList(list, {resultsEl}){
       resultsEl.innerHTML = "";
@@ -524,124 +594,4 @@
       return { changed: false };
     }
 
-    async function renderPlaces(places, {resultsEl, slider, noticeEl}){
-      const mySeq = ++renderSeq;
-
-      resultsEl.innerHTML = "";
-      clearMarkers();
-      // Keep infoWin open on pin click
-      if (!places || !places.length) return;
-
-      smartOriginAndRadius(places, slider, noticeEl);
-
-      const mode = currentMode();
-      const maxKm = parseFloat(slider.value);
-
-      let filtered = places.filter(p =>
-        p.geometry && p.geometry.location &&
-        distanceMeters(origin, p.geometry.location) <= maxKm*1000
-      );
-
-      if (!filtered.length && !userAdjustedSlider) {
-        const nearest = [...places]
-          .filter(p => p.geometry?.location)
-          .map(p => distanceMeters(origin, p.geometry.location)/1000)
-          .sort((a,b)=>a-b)[0];
-        if (isFinite(nearest)) {
-          const newKm = Math.min(50, Math.max(maxKm, Math.ceil(nearest + 1)));
-          slider.value = String(newKm);
-          document.getElementById("distance-value").textContent = newKm;
-          noticeEl.textContent = `Expanded distance to ${newKm} km to include the closest result.`;
-          userAdjustedSlider = true;
-          if (mySeq !== renderSeq) return;
-          filtered = places.filter(p =>
-            p.geometry && p.geometry.location &&
-            distanceMeters(origin, p.geometry.location) <= newKm*1000
-          );
-        }
-      }
-
-      if (!filtered.length) {
-        if (mySeq !== renderSeq) return;
-        resultsEl.innerHTML = `<div class="list-group-item">No results within ${parseFloat(slider.value)} km.</div>`;
-        return;
-      }
-
-      if (mode === "top"){
-        filtered.sort((a,b) => (b.user_ratings_total || 0) - (a.user_ratings_total || 0));
-      } else {
-        const haveAllMetas = filtered.every(p => metaCache.has(p.place_id));
-        if (haveAllMetas){
-          filtered = filtered
-            .map(p => ({ p, m: metaCache.get(p.place_id) }))
-            .sort((a,b) => (b.m.score - a.m.score))
-            .map(x => x.p);
-        }
-      }
-
-      if (mySeq !== renderSeq) return;
-      paintList(filtered, {resultsEl});
-
-      if (mode === "new"){
-        const toFetch = filtered.filter(p => !metaCache.has(p.place_id));
-        if (toFetch.length){
-          try{
-            await Promise.all(toFetch.map(p => getPlaceMeta(p)));
-            if (mySeq !== renderSeq) return;
-            const resorted = filtered
-              .map(p => ({ p, m: metaCache.get(p.place_id) }))
-              .sort((a,b) => (b.m.score - a.m.score))
-              .map(x => x.p);
-            if (mySeq !== renderSeq) return;
-            paintList(resorted, {resultsEl});
-          }catch(err){
-            console.warn('Details fetch error (ignored):', err);
-          }
-        }
-      }
-    }
-  </script>
-</head>
-
-<body translate="no">
-  <div class="container pt-3">
-    <h1 class="text-warning text-center">Find popular places</h1>
-    <h4 class="text-secondary text-center">Filter by distance and choose Top or New places.</h4>
-
-    <!-- Input + explicit Search button (side-by-side) -->
-    <div class="input-group">
-      <input id="pac-input" class="form-control searchTerm" placeholder="E.g. Cafes near Whitefield" autofocus />
-      <div class="input-group-append">
-        <button id="go-btn" class="btn btn-info" type="button">Search</button>
-      </div>
-    </div>
-
-    <!-- Sorting mode toggle -->
-    <div class="mt-2 text-light btn-toggle" id="mode-container" role="group" aria-label="Sort mode">
-      <button class="btn btn-sm btn-outline-info active" data-mode="top" title="Sort by number of ratings">Top places</button>
-      <button class="btn btn-sm btn-outline-info" data-mode="new" title="Newest places first">New places</button>
-      <div class="hint mt-1">Top = by number of ratings. New = earliest review date (age/since badges only in “New”).</div>
-    </div>
-
-    <!-- Distance slider UI -->
-    <div class="mt-2 text-light">
-      <label for="distance-slider">Max distance: <span id="distance-value">5</span> km</label>
-      <input type="range" id="distance-slider" min="1" max="50" value="5" step="1" />
-      <div class="hint mt-1">Measured from your location (if allowed) or the current map center.</div>
-      <div id="notice" class="notice"></div>
-    </div>
-
-    <!-- Map + Results -->
-    <div class="mt-3">
-      <div id="map" class="mb-3"></div>
-      <div id="results" class="list-group"></div>
-    </div>
-  </div>
-
-  <!-- Google Maps API with YOUR KEY -->
-  <script
-    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBCDJZDoS6NBc0JYuk11tx7v2kmIKR5I1I&libraries=places,geometry&v=weekly&callback=gmapsReady"
-    async defer onerror="console.error('[gmaps] failed to load JS');">
-  </script>
-</body>
-</html>
+    async function rende
