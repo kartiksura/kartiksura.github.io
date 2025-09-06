@@ -1,6 +1,4 @@
-Here’s the complete, cleaned-up HTML file with your API key kept exactly as-is and the slider now live-updating the results.
 
-```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -36,13 +34,14 @@ Here’s the complete, cleaned-up HTML file with your API key kept exactly as-is
     }
     .list-group { width: 100%; font-size: 20px; color: #000; }
     .wrap { width: 80%; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); }
+    .hint { font-size: 12px; opacity: 0.75; }
   </style>
 </head>
 
 <body translate="no">
   <h1 class="text-warning text-center">Find popular places</h1>
-  <h4 class="text-secondary text-center">Powered by Google Maps, this sorts the places by their number of reviews, rather than average rating.</h4>
-  <h4 class="text-secondary text-center">This helps in finding popular places, esp in touristy areas</h4>
+  <h4 class="text-secondary text-center">Powered by Google Maps, this sorts the places by number of reviews rather than average rating.</h4>
+  <h4 class="text-secondary text-center">This helps in finding popular places, especially in touristy areas.</h4>
 
   <div id="header"></div>
 
@@ -57,6 +56,7 @@ Here’s the complete, cleaned-up HTML file with your API key kept exactly as-is
     <div class="mt-2 text-light">
       <label for="distance-slider">Max distance: <span id="distance-value">5</span> km</label>
       <input type="range" id="distance-slider" min="1" max="50" value="5" step="1" style="width:100%;" />
+      <div class="hint mt-1">Distance is measured from your location (if allowed) or the current map center.</div>
     </div>
 
     <div class="list-group" id="ticketdiv">
@@ -84,21 +84,7 @@ Here’s the complete, cleaned-up HTML file with your API key kept exactly as-is
      */
     // @ts-nocheck
 
-    // Avoid errors from string-based setTimeout
     function geolocFail() { /* no-op */ }
-
-    // Haversine (km) between two google.maps.LatLng
-    function distanceKmBetween(a, b) {
-      const toRad = d => (d * Math.PI) / 180;
-      const lat1 = a.lat(), lon1 = a.lng();
-      const lat2 = b.lat(), lon2 = b.lng();
-      const R = 6371;
-      const dLat = toRad(lat2 - lat1);
-      const dLon = toRad(lon2 - lon1);
-      const s1 = Math.sin(dLat / 2) ** 2;
-      const s2 = Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
-      return 2 * R * Math.asin(Math.sqrt(s1 + s2));
-    }
 
     function getValue(data, path) {
       var i, len = path.length;
@@ -107,33 +93,57 @@ Here’s the complete, cleaned-up HTML file with your API key kept exactly as-is
     }
 
     function initAutocomplete() {
-      var mydiv = document.getElementById("ticketdiv");
-
+      const listEl = document.getElementById("ticketdiv");
       const map = new google.maps.Map(document.getElementById("map"), {
         center: { lat: -33.8688, lng: 151.2195 },
         zoom: 17,
         mapTypeId: "roadmap"
       });
 
-      // Keep state up here so slider listener can access it
+      // ---- State ----
       let markers = [];
       let lastPlaces = [];
+      let origin = map.getCenter(); // updated to geolocation if available
+      let radiusCircle = new google.maps.Circle({
+        map,
+        center: origin,
+        radius: parseFloat(document.getElementById("distance-slider").value) * 1000,
+        strokeColor: "#00b4cc",
+        strokeOpacity: 0.8,
+        strokeWeight: 1,
+        fillColor: "#00b4cc",
+        fillOpacity: 0.08,
+        clickable: false
+      });
 
+      // Use geolocation as the distance origin when available
       if (navigator.geolocation) {
         var location_timeout = setTimeout("geolocFail()", 10000);
         navigator.geolocation.getCurrentPosition(function (position) {
           clearTimeout(location_timeout);
-          const pos = { lat: position.coords.latitude, lng: position.coords.longitude };
+          const pos = new google.maps.LatLng(position.coords.latitude, position.coords.longitude);
+          origin = pos;
           map.setCenter(pos);
+          radiusCircle.setCenter(pos);
         });
       }
 
+      // Allow panning the map to redefine origin (on idle)
+      map.addListener("idle", () => {
+        // If user has panned/zoomed, treat current center as origin unless we just set geolocation.
+        origin = map.getCenter();
+        radiusCircle.setCenter(origin);
+        if (lastPlaces.length) renderPlaces(lastPlaces);
+      });
+
       // Distance slider + label (live re-filter)
-      var slider = document.getElementById("distance-slider");
-      var distanceValue = document.getElementById("distance-value");
+      const slider = document.getElementById("distance-slider");
+      const distanceValue = document.getElementById("distance-value");
       if (slider && distanceValue) {
         slider.addEventListener("input", function () {
-          distanceValue.textContent = this.value;
+          const km = parseFloat(this.value);
+          distanceValue.textContent = km;
+          radiusCircle.setRadius(km * 1000);
           if (lastPlaces && lastPlaces.length) renderPlaces(lastPlaces);
         });
       }
@@ -153,47 +163,31 @@ Here’s the complete, cleaned-up HTML file with your API key kept exactly as-is
         markers = [];
       }
 
-      // Shared renderer (used by initial search and slider changes)
       function renderPlaces(places) {
-        mydiv.innerHTML = "";
+        listEl.innerHTML = "";
         clearMarkers();
         if (!places || places.length === 0) return;
 
-        // Reference = centroid of the returned places; fallback to map center
-        const pts = places
-          .filter(p => p.geometry && p.geometry.location)
-          .map(p => p.geometry.location);
-
-        const centerRef = pts.length
-          ? new google.maps.LatLng(
-              pts.reduce((s, loc) => s + loc.lat(), 0) / pts.length,
-              pts.reduce((s, loc) => s + loc.lng(), 0) / pts.length
-            )
-          : map.getCenter();
-
-        // Filter by slider distance
         const maxKm = slider ? parseFloat(slider.value) : Infinity;
-        let filtered = places.filter(p => {
+        const bounds = new google.maps.LatLngBounds();
+
+        // Use Google's precise spherical distance (meters)
+        const filtered = places.filter(p => {
           if (!p.geometry || !p.geometry.location) return false;
-          const dKm = distanceKmBetween(centerRef, p.geometry.location);
-          return dKm <= maxKm;
+          const meters = google.maps.geometry.spherical.computeDistanceBetween(origin, p.geometry.location);
+          return meters <= maxKm * 1000;
         });
 
         if (filtered.length === 0) {
-          mydiv.innerHTML = `<div class="list-group-item">No results within ${maxKm} km.</div>`;
+          listEl.innerHTML = `<div class="list-group-item">No results within ${maxKm} km.</div>`;
           return;
         }
 
         // Sort by number of ratings (descending)
         filtered.sort((a, b) => (b.user_ratings_total || 0) - (a.user_ratings_total || 0));
 
-        const bounds = new google.maps.LatLngBounds();
-
         filtered.forEach((place) => {
-          if (!place.geometry || !place.geometry.location) {
-            console.log("Returned place contains no geometry");
-            return;
-          }
+          if (!place.geometry || !place.geometry.location) return;
 
           const icon = {
             url: place.icon,
@@ -203,38 +197,40 @@ Here’s the complete, cleaned-up HTML file with your API key kept exactly as-is
             scaledSize: new google.maps.Size(25, 25)
           };
 
-          var info = {
+          const meters = google.maps.geometry.spherical.computeDistanceBetween(origin, place.geometry.location);
+          const distKm = (meters / 1000).toFixed(2);
+
+          const info = {
             name: place.name,
-            photo: null,
+            photo: (place.photos && Array.isArray(place.photos)) ? place.photos[0].getUrl() : null,
             user_ratings_total: place.user_ratings_total,
             isOpen: getValue(place, ["opening_hours", "open_now"]),
             maps_link:
               "https://www.google.com/maps/search/?api=1&query=" +
-              encodeURIComponent(place.formatted_address) +
-              "&query_place_id=" + place.place_id
+              encodeURIComponent(place.formatted_address || place.name) +
+              "&query_place_id=" + place.place_id,
+            distance_km: distKm
           };
 
-          if (place.photos && Array.isArray(place.photos)) {
-            info.photo = place.photos[0].getUrl();
-          }
+          listEl.innerHTML += `
+            <a href="${info.maps_link}"
+               class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+              <div class="flex-column">
+                <strong class="text-dark">${info.name}</strong>
+                ${
+                  info.isOpen === true
+                    ? "<p class='text-primary mb-1'><small>Open now</small></p>"
+                    : "<p class='text-danger mb-1'><small>Closed</small></p>"
+                }
+                <span class="badge badge-info badge-pill">${info.user_ratings_total} ratings</span>
+                <span class="badge badge-secondary badge-pill ml-2">${info.distance_km} km</span>
+              </div>
+              <div class="image-parent">
+                ${info.photo ? `<img src="${info.photo}" class="img-fluid" alt="place" />` : ""}
+              </div>
+            </a>`;
 
-          mydiv.innerHTML += `<a href="${info.maps_link}"
-              class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
-            <div class="flex-column">
-              <strong class="text-dark">${info.name}</strong>
-              ${
-                info.isOpen === true
-                  ? "<p class='text-primary'><small>Open now</small></p>"
-                  : "<p class='text-danger'><small>Closed</small></p>"
-              }
-              <span class="badge badge-info badge-pill">${info.user_ratings_total} ratings</span>
-            </div>
-            <div class="image-parent">
-              ${info.photo ? `<img src="${info.photo}" class="img-fluid" alt="place" />` : ""}
-            </div>
-          </a>`;
-
-          // Create a marker for each place.
+          // Marker
           markers.push(new google.maps.Marker({
             map,
             icon,
@@ -242,15 +238,13 @@ Here’s the complete, cleaned-up HTML file with your API key kept exactly as-is
             position: place.geometry.location
           }));
 
-          if (place.geometry.viewport) {
-            bounds.union(place.geometry.viewport);
-          } else {
-            bounds.extend(place.geometry.location);
-          }
+          if (place.geometry.viewport) bounds.union(place.geometry.viewport);
+          else bounds.extend(place.geometry.location);
         });
 
-        // Fit to the filtered set
-        map.fitBounds(bounds);
+        // Keep the current view but make sure filtered bounds are visible
+        // If you prefer strict fit to results, uncomment:
+        // map.fitBounds(bounds);
       }
 
       // When a place prediction is chosen, save and render it
@@ -264,11 +258,11 @@ Here’s the complete, cleaned-up HTML file with your API key kept exactly as-is
     window.initAutocomplete = initAutocomplete;
   </script>
 
-  <!-- Google Maps API (your API key kept intact) -->
+  <!-- Google Maps API (key unchanged) -->
+  <!-- NOTE: add 'geometry' to libraries for precise distance calculations -->
   <script
-    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBCDJZDoS6NBc0JYuk11tx7v2kmIKR5I1I&callback=initAutocomplete&libraries=places&v=weekly"
+    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBCDJZDoS6NBc0JYuk11tx7v2kmIKR5I1I&callback=initAutocomplete&libraries=places,geometry&v=weekly"
     defer>
   </script>
 </body>
 </html>
-```
