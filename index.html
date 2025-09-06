@@ -90,9 +90,16 @@
         clearMarkers();
         if (!lastPlaces.length) return;
 
-        const origin = userPos ? new google.maps.LatLng(userPos.lat, userPos.lng) : map.getCenter();
+        const allBounds = new google.maps.LatLngBounds();
+        lastPlaces.forEach(p => {
+          if (p.geometry && p.geometry.location) {
+            if (p.geometry.viewport) allBounds.union(p.geometry.viewport);
+            else allBounds.extend(p.geometry.location);
+          }
+        });
+        const origin = allBounds.isEmpty() ? map.getCenter() : allBounds.getCenter();
         const maxMeters = distanceSelect.value === 'any' ? Infinity : parseInt(distanceSelect.value, 10);
-        const bounds = new google.maps.LatLngBounds();
+        const boun
 
         const sorted = [...lastPlaces].sort((a, b) => (b.user_ratings_total || 0) - (a.user_ratings_total || 0));
 
