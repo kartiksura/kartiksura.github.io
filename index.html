@@ -24,6 +24,7 @@
     #results { position: relative; z-index: 1; }
     .image-parent { max-width: 190px; }
     .place-thumb { width: 100%; height: 120px; object-fit: cover; border-radius: .5rem; }
+  .pac-container { z-index: 10000 !important; }
   </style>
 </head>
 <body>
@@ -99,7 +100,7 @@
         });
         const origin = allBounds.isEmpty() ? map.getCenter() : allBounds.getCenter();
         const maxMeters = distanceSelect.value === 'any' ? Infinity : parseInt(distanceSelect.value, 10);
-        const boun
+        const bounds = new google.maps.LatLngBounds();
 
         const sorted = [...lastPlaces].sort((a, b) => (b.user_ratings_total || 0) - (a.user_ratings_total || 0));
 
