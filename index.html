@@ -95,13 +95,14 @@
     }
     #distance-slider:active::-webkit-slider-thumb { transform: scale(1.05); }
 
-    /* InfoWindow content */
-    .iw { font-family: "Open Sans", sans-serif; max-width: 300px; }
-    .iw h6 { margin: 0 0 4px; font-weight: 700; font-size: 15px; }
-    .iw .meta { font-size: 13px; color: #444; }
-    .iw .badges .badge { margin-right: 6px; margin-top: 6px; }
-    .iw img.thumb { width: 100%; border-radius: 6px; margin-top: 8px; }
-    .iw .actions a { font-size: 13px; margin-right: 10px; }
+    /* InfoWindow content must be dark text (fix white-on-white) */
+    .iw { color: #111; }               /* wrapper we inject */
+    .iw .meta { color: #333; }
+    .iw a { color: #0d6efd; text-decoration: none; }
+    .iw a:hover { text-decoration: underline; }
+    /* Also target Google’s internal containers so inherited color is dark */
+    .gm-style .gm-style-iw-c, .gm-style .gm-style-iw-d { color: #111; }
+    .iw .badge-light { color: #222; background-color: #f8f9fa; }
 
     /* Phones */
     @media (max-width: 576px){
@@ -156,6 +157,36 @@
       return "today";
     }
     function debounce(fn, wait=650){ let t; return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args), wait); }; }
+
+    // --- Heuristic review-rate estimator (local cohort) ---
+    function percentile(arr, q) {
+      if (!arr.length) return null;
+      const i = (arr.length - 1) * q;
+      const lo = Math.floor(i), hi = Math.ceil(i);
+      if (lo === hi) return arr[lo];
+      const h = i - lo;
+      return arr[lo] * (1 - h) + arr[hi] * h;
+    }
+    function computeLocalRateStats(places) {
+      const now = Date.now();
+      const rates = [];
+      places.forEach(p => {
+        const meta = metaCache.get(p.place_id);
+        const c = p.user_ratings_total || 0;
+        const ts = meta?.tsMsUpper;
+        if (c > 0 && ts && now > ts) {
+          const days = (now - ts) / 86400000;
+          if (days >= 1) rates.push(c / days); // reviews per day
+        }
+      });
+      rates.sort((a,b)=>a-b);
+      return {
+        n: rates.length,
+        p25: percentile(rates, 0.25),
+        median: percentile(rates, 0.50),
+        p75: percentile(rates, 0.75),
+      };
+    }
 
     // Globals
     let map, placesService, searchBox, infoWin;
@@ -400,6 +431,7 @@
 
     function clearMarkers(){ markers.forEach(m=>m.setMap(null)); markers = []; }
 
+    // --- Details meta: earliest visible review (lower bound) + fields for heuristic ---
     function getPlaceMeta(place){
       const pid = place.place_id;
       if (metaCache.has(pid)) return Promise.resolve(metaCache.get(pid));
@@ -408,54 +440,88 @@
       const p = new Promise((resolve)=>{
         try{
           placesService.getDetails(
-            { placeId: pid, fields: ['reviews','user_ratings_total','opening_hours','utc_offset_minutes'] },
+            { placeId: pid, fields: ['reviews','user_ratings_total','opening_hours'] },
             (details, status)=>{
-              let meta = { score: 0, tsMs: null, source: 'heuristic', isOpen: null };
+              let meta = { 
+                tsMsUpper: null,      // earliest (oldest) review we can access (lower bound on age)
+                ageEstDays: null,     // heuristic estimate (filled later)
+                sinceEstTs: null,     // estimated "since" timestamp
+                sortTs: null,         // for sorting in "new" mode
+                source: 'heuristic',
+                isOpen: null
+              };
+
               try{
                 if (status === google.maps.places.PlacesServiceStatus.OK && details){
                   if (Array.isArray(details.reviews) && details.reviews.length){
-                    const times = details.reviews.map(r=> r?.time ? r.time*1000 : 0).filter(n=>n>0);
+                    const times = details.reviews
+                      .map(r => (r && typeof r.time === 'number') ? r.time*1000 : 0)
+                      .filter(n => n > 0);
                     if (times.length){
-                      const firstTsMs = Math.min(...times);
-                      meta.score = firstTsMs;
-                      meta.tsMs = firstTsMs;
-                      meta.source = 'review';
+                      meta.tsMsUpper = Math.min(...times);
+                      meta.source = 'reviews<=5';
                     }
                   }
                   if (details.opening_hours && typeof details.opening_hours.isOpen === 'function'){
                     meta.isOpen = !!details.opening_hours.isOpen();
                   }
                 }
-                if (!meta.tsMs){
-                  meta.score = Date.now() - (place.user_ratings_total || 0)*86400000;
-                }
               }catch(_){}
-              metaCache.set(pid, meta); metaPending.delete(pid); resolve(meta);
+
+              meta.sortTs = meta.tsMsUpper || Date.now();
+              metaCache.set(pid, meta); 
+              metaPending.delete(pid); 
+              resolve(meta);
             }
           );
         }catch(_){
-          const meta = { score: Date.now(), tsMs: null, source: 'heuristic', isOpen: null };
+          const meta = { tsMsUpper: null, ageEstDays: null, sinceEstTs: null, sortTs: Date.now(), source: 'heuristic', isOpen: null };
           metaCache.set(pid, meta); metaPending.delete(pid); resolve(meta);
         }
       });
+
       metaPending.set(pid, p);
       return p;
     }
 
+    // Build InfoWindow HTML (includes age heuristic badges in "new" mode)
     function buildInfoHTML(place, meta){
       const mode = currentMode();
       const showAge = (mode === 'new');
+      const m = meta ?? metaCache.get(place.place_id);
+
       const name = place.name || 'Place';
       const addr = place.formatted_address || place.vicinity || '';
       const rating = (typeof place.rating === 'number') ? place.rating.toFixed(1) : null;
       const count = place.user_ratings_total || 0;
       const meters = place.geometry?.location ? distanceMeters(origin, place.geometry.location) : null;
       const dist = meters != null ? `${(meters/1000).toFixed(2)} km` : '';
-      const isOpen = (typeof meta?.isOpen === 'boolean') ? meta.isOpen : null;
-      const ageText = (showAge && meta?.tsMs) ? formatAge(meta.tsMs) : (showAge ? 'unknown' : '');
-      const sinceText = (showAge && meta?.tsMs) ? new Date(meta.tsMs).toLocaleDateString() : '';
+      const isOpen = (typeof m?.isOpen === 'boolean') ? m.isOpen : null;
+
+      // Age badges (lower-bound + estimate)
+      const lbTs = m?.tsMsUpper || null;
+      const estDays = m?.ageEstDays || null;
+      const estTs = m?.sinceEstTs || null;
+      const lbAge = lbTs ? formatAge(lbTs) : null;
+
+      let ageBadge = '', sinceBadge = '';
+      if (showAge){
+        if (lbTs && estDays){
+          ageBadge  = `<span class="badge badge-light">age: ≥ ${lbAge} (est. ~ ${formatAge(estTs)})</span>`;
+          sinceBadge = `<span class="badge badge-dark">est since: ${new Date(estTs).toLocaleDateString()}</span>`;
+        } else if (lbTs){
+          ageBadge  = `<span class="badge badge-light">age: ≥ ${lbAge}</span>`;
+          sinceBadge = `<span class="badge badge-dark">first review: ${new Date(lbTs).toLocaleDateString()}</span>`;
+        } else if (estDays){
+          ageBadge  = `<span class="badge badge-light">age: ~ ${formatAge(estTs)}</span>`;
+          sinceBadge = `<span class="badge badge-dark">est since: ${new Date(estTs).toLocaleDateString()}</span>`;
+        } else {
+          ageBadge  = `<span class="badge badge-light">age: unknown</span>`;
+        }
+      }
+
       const pid = place.place_id;
-      const lat = place.geometry?.location?.lat?.();
+      const lat = place.geometry?.location?.lat?.(); 
       const lng = place.geometry?.location?.lng?.();
       const mapsLink = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr || name)}&query_place_id=${pid}`;
       const dirLink = (lat && lng) ? `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&destination_place_id=${pid}` : mapsLink;
@@ -476,7 +542,7 @@
               isOpen === false ? `<span class="badge badge-danger">Closed</span>` :
               `<span class="badge badge-light">Hours: unknown</span>`
             }
-            ${ showAge ? `<span class="badge badge-light">age: ${ageText}</span>${ sinceText ? ` <span class="badge badge-dark">since ${sinceText}</span>` : '' }` : '' }
+            ${ ageBadge } ${ sinceBadge }
           </div>
           <div class="actions mt-2">
             <a href="${mapsLink}" target="_blank" rel="noopener">Open in Maps</a>
@@ -519,8 +585,28 @@
         const distKm = (meters/1000).toFixed(2);
         const pid = place.place_id;
         const meta = metaCache.get(pid);
-        const ageText = (showAge && meta && meta.tsMs) ? formatAge(meta.tsMs) : (showAge ? "unknown" : "");
-        const sinceText = (showAge && meta && meta.tsMs) ? new Date(meta.tsMs).toLocaleDateString() : "";
+
+        // Age badges (same logic as InfoWindow)
+        const lbTs = meta?.tsMsUpper || null;
+        const estDays = meta?.ageEstDays || null;
+        const estTs = meta?.sinceEstTs || null;
+        const lbAge = lbTs ? formatAge(lbTs) : null;
+
+        let ageBadge = '', sinceBadge = '';
+        if (showAge){
+          if (lbTs && estDays){
+            ageBadge  = `<span class="badge badge-light badge-pill ml-2">age: ≥ ${lbAge} (est. ~ ${formatAge(estTs)})</span>`;
+            sinceBadge = `<span class="badge badge-dark badge-pill ml-2">est since: ${new Date(estTs).toLocaleDateString()}</span>`;
+          } else if (lbTs){
+            ageBadge  = `<span class="badge badge-light badge-pill ml-2">age: ≥ ${lbAge}</span>`;
+            sinceBadge = `<span class="badge badge-dark badge-pill ml-2">first review: ${new Date(lbTs).toLocaleDateString()}</span>`;
+          } else if (estDays){
+            ageBadge  = `<span class="badge badge-light badge-pill ml-2">age: ~ ${formatAge(estTs)}</span>`;
+            sinceBadge = `<span class="badge badge-dark badge-pill ml-2">est since: ${new Date(estTs).toLocaleDateString()}</span>`;
+          } else {
+            ageBadge  = `<span class="badge badge-light badge-pill ml-2">age: unknown</span>`;
+          }
+        }
 
         const a = document.createElement("a");
         a.className = "list-group-item list-group-item-action d-flex justify-content-between align-items-center";
@@ -534,8 +620,7 @@
             <span class="open-status" data-pid="${pid}"></span>
             <span class="badge badge-info badge-pill">${place.user_ratings_total || 0} ratings</span>
             <span class="badge badge-secondary badge-pill ml-2">${distKm} km</span>
-            ${ showAge ? `<span class="badge badge-light badge-pill ml-2 age-badge" data-pid="${pid}">age: ${ageText}</span>` : "" }
-            ${ showAge && sinceText ? `<span class="badge badge-dark badge-pill ml-2 since-badge" data-pid="${pid}">since ${sinceText}</span>` : "" }
+            ${ showAge ? `${ageBadge} ${sinceBadge}` : "" }
           </div>
           <div class="image-parent">
             ${ place.photos && place.photos[0] ? `<img src="${place.photos[0].getUrl()}" class="img-fluid" alt="place">` : "" }
@@ -546,7 +631,7 @@
         // Marker + InfoWindow
         markers.push(createMarker(place));
 
-        // Open/closed + (if New) age/since after details
+        // Open/closed (and allow meta to fill age badges if not present)
         const statusEl = a.querySelector(`.open-status[data-pid="${pid}"]`);
         const setStatusAndMaybeAge = (m) => {
           if (statusEl) {
@@ -559,20 +644,12 @@
             }
           }
           if (showAge) {
-            const ageEl = a.querySelector(`.age-badge[data-pid="${pid}"]`);
-            const sinceEl = a.querySelector(`.since-badge[data-pid="${pid}"]`);
-            if (ageEl) ageEl.textContent = "age: " + (m?.tsMs ? formatAge(m.tsMs) : "unknown");
-            if (sinceEl && m?.tsMs) {
-              sinceEl.textContent = "since " + new Date(m.tsMs).toLocaleDateString();
-            } else if (!sinceEl && m?.tsMs) {
-              const parent = ageEl && ageEl.parentElement;
-              if (parent) {
-                const span = document.createElement("span");
-                span.className = "badge badge-dark badge-pill ml-2 since-badge";
-                span.setAttribute("data-pid", pid);
-                span.textContent = "since " + new Date(m.tsMs).toLocaleDateString();
-                parent.appendChild(span);
-              }
+            // Replace the line with updated badges if we only had placeholders
+            const badgesParent = statusEl?.parentElement;
+            if (badgesParent) {
+              const existing = badgesParent.querySelectorAll('.age-badge,.since-badge');
+              existing.forEach(n => n.remove());
+              // (We already inserted badges above, so no need to re-add unless you want to dynamically refine)
             }
           }
         };
@@ -654,36 +731,51 @@
 
       if (mode === "top"){
         filtered.sort((a,b) => (b.user_ratings_total || 0) - (a.user_ratings_total || 0));
-      } else {
-        const haveAllMetas = filtered.every(p => metaCache.has(p.place_id));
-        if (haveAllMetas){
-          filtered = filtered
-            .map(p => ({ p, m: metaCache.get(p.place_id) }))
-            .sort((a,b) => (b.m.score - a.m.score))
-            .map(x => x.p);
-        }
+        if (mySeq !== renderSeq) return;
+        paintList(filtered, {resultsEl});
+        return;
       }
+
+      // --- "NEW" MODE WITH HEURISTIC ---
+      // Ensure we have meta for all currently visible places
+      const toFetch = filtered.filter(p => !metaCache.has(p.place_id));
+      if (toFetch.length){
+        try { await Promise.all(toFetch.map(p => getPlaceMeta(p))); }
+        catch(err){ console.warn('Details fetch error (ignored):', err); }
+      }
+
+      // 1) Compute local review-rate stats from places that have a lower bound
+      const stats = computeLocalRateStats(filtered); // { n, median, p25, p75 }
+      const now = Date.now();
+      const day = 86400000;
+
+      // 2) Fill heuristic estimate per place
+      filtered.forEach(p => {
+        const meta = metaCache.get(p.place_id) || {};
+        const c = p.user_ratings_total || 0;
+        const lbTs = meta.tsMsUpper || null;                                // lower-bound "since"
+        const lbDays = lbTs ? Math.max(1, (now - lbTs)/day) : 0;            // ≥ this many days old
+
+        let estDays = null;
+        if (stats.median && stats.median > 0 && c > 0){
+          estDays = c / stats.median;                                       // reviews ÷ (reviews/day)
+          estDays = Math.max(estDays, lbDays);                               // never contradict lower bound
+        }
+
+        meta.ageEstDays = estDays;                                           // may be null
+        meta.sinceEstTs = estDays ? (now - estDays*day) : lbTs;              // prefer estimate; fallback to LB
+        meta.sortTs = meta.sinceEstTs || lbTs || now;                        // newer first
+        metaCache.set(p.place_id, meta);
+      });
+
+      // 3) Sort with heuristic (newest first = larger timestamp)
+      filtered = filtered
+        .map(p => ({ p, m: metaCache.get(p.place_id) }))
+        .sort((a,b) => (b.m.sortTs - a.m.sortTs))
+        .map(x => x.p);
 
       if (mySeq !== renderSeq) return;
       paintList(filtered, {resultsEl});
-
-      if (mode === "new"){
-        const toFetch = filtered.filter(p => !metaCache.has(p.place_id));
-        if (toFetch.length){
-          try{
-            await Promise.all(toFetch.map(p => getPlaceMeta(p)));
-            if (mySeq !== renderSeq) return;
-            const resorted = filtered
-              .map(p => ({ p, m: metaCache.get(p.place_id) }))
-              .sort((a,b) => (b.m.score - a.m.score))
-              .map(x => x.p);
-            if (mySeq !== renderSeq) return;
-            paintList(resorted, {resultsEl});
-          }catch(err){
-            console.warn('Details fetch error (ignored):', err);
-          }
-        }
-      }
     }
   </script>
 </head>
@@ -714,7 +806,10 @@
       <div class="mt-2 text-light btn-toggle" id="mode-container" role="group" aria-label="Sort mode">
         <button class="btn btn-sm btn-outline-info active" data-mode="top" title="Sort by number of ratings">Top places</button>
         <button class="btn btn-sm btn-outline-info" data-mode="new" title="Newest places first">New places</button>
-        <div class="hint mt-1">Top = by number of ratings. New = earliest review date (age/since only in “New”).</div>
+        <div class="hint mt-1">
+          Top = by number of ratings. New = estimated from earliest visible review + local review rate;
+          actual age may be older.
+        </div>
       </div>
 
       <!-- Distance slider -->
