@@ -1,8 +1,4 @@
-Absolutely! I added a **distance filter** so users can choose how far to search from the current map center (or their geolocation if available). This uses **Places Nearby Search** with a configurable radius (0.5–20 km). Enter/Click/Chips run a nearby search with your chosen radius; autocomplete selection still works as before.
 
-Drop this into a single `.html` file:
-
-```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -547,13 +543,3 @@ Drop this into a single `.html` file:
   </script>
 </body>
 </html>
-```
-
-### What’s new
-
-* **Distance filter** (`#radius-select`) with preset radii (0.5, 1, 2, 5, 10, 20 km).
-* **Nearby Search**: Enter/Search/Chips now call `PlacesService.nearbySearch` using the selected radius and **current map center** (or your geolocation if allowed).
-* **Origin marker + label** so users see where the radius is applied. Drag/pan the map to change the origin.
-* Autocomplete: selecting a place recenters the map there and runs a nearby search around it using your chosen radius.
-
-If you want a **slider** instead of a dropdown, say the word and I’ll swap in a nice, labeled range slider (with live km readout).
