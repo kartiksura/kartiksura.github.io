@@ -1,3 +1,6 @@
+Absolutely—here’s the full file with a rich **InfoWindow** when you click any map pin (name, address, rating + count, distance, open/closed, and—only in **New** mode—age & since). Your API key is included in the loader.
+
+```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -57,6 +60,14 @@
     #distance-slider::-ms-thumb {
       width: 28px; height: 28px; border-radius: 50%; background: #00b4cc; border: 2px solid #66e0ef;
     }
+
+    /* InfoWindow content */
+    .iw { font-family: "Open Sans", sans-serif; max-width: 280px; }
+    .iw h6 { margin: 0 0 4px; font-weight: 700; }
+    .iw .meta { font-size: 13px; color: #444; }
+    .iw .badges .badge { margin-right: 6px; margin-top: 6px; }
+    .iw img.thumb { width: 100%; border-radius: 6px; margin-top: 8px; }
+    .iw .actions a { font-size: 13px; margin-right: 10px; }
   </style>
 
   <script>
@@ -99,8 +110,8 @@
     // Debounce helper
     function debounce(fn, wait=650){ let t; return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args), wait); }; }
 
-    // Globals (initialized in startApp)
-    let map, placesService, searchBox;
+    // Globals
+    let map, placesService, searchBox, infoWin;
     let markers = [];
     let lastPlaces = [];
     let origin;
@@ -120,7 +131,7 @@
       });
     }
 
-    // Exposed callback from Google loader; ensures DOM is ready before starting
+    // Exposed callback from Google loader
     function gmapsReady(){
       if (document.readyState === 'loading'){
         document.addEventListener('DOMContentLoaded', startApp);
@@ -128,7 +139,7 @@
         startApp();
       }
     }
-    window.gmapsReady = gmapsReady; // must be global for callback=
+    window.gmapsReady = gmapsReady;
 
     function startApp(){
       if (!window.google || !google.maps || !google.maps.places){
@@ -148,6 +159,7 @@
       });
       placesService = new google.maps.places.PlacesService(map);
       searchBox = new google.maps.places.SearchBox(input); // suggestions only
+      infoWin = new google.maps.InfoWindow();
       origin = map.getCenter();
 
       // Visual distance circle
@@ -313,6 +325,79 @@
       return p;
     }
 
+    // Build InfoWindow HTML
+    function buildInfoHTML(place, meta){
+      const mode = currentMode();
+      const showAge = (mode === 'new');
+      const name = place.name || 'Place';
+      const addr = place.formatted_address || place.vicinity || '';
+      const rating = (typeof place.rating === 'number') ? place.rating.toFixed(1) : null;
+      const count = place.user_ratings_total || 0;
+      const meters = place.geometry?.location ? distanceMeters(origin, place.geometry.location) : null;
+      const dist = meters != null ? `${(meters/1000).toFixed(2)} km` : '';
+      const isOpen = (typeof meta?.isOpen === 'boolean') ? meta.isOpen : null;
+      const ageText = (showAge && meta?.tsMs) ? formatAge(meta.tsMs) : (showAge ? 'unknown' : '');
+      const sinceText = (showAge && meta?.tsMs) ? new Date(meta.tsMs).toLocaleDateString() : '';
+      const pid = place.place_id;
+      const lat = place.geometry?.location?.lat?.(); 
+      const lng = place.geometry?.location?.lng?.();
+      const mapsLink = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr || name)}&query_place_id=${pid}`;
+      const dirLink = (lat && lng) ? `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&destination_place_id=${pid}` : mapsLink;
+      const photoUrl = place.photos && place.photos[0] && typeof place.photos[0].getUrl === 'function'
+        ? place.photos[0].getUrl({maxWidth: 400})
+        : null;
+
+      return `
+        <div class="iw">
+          <h6>${name}</h6>
+          <div class="meta">${addr || ''}</div>
+          <div class="badges">
+            ${ rating != null ? `<span class="badge badge-warning">★ ${rating}</span>` : '' }
+            <span class="badge badge-info">${count} ratings</span>
+            ${ dist ? `<span class="badge badge-secondary">${dist}</span>` : '' }
+            ${
+              isOpen === true ? `<span class="badge badge-success">Open now</span>` :
+              isOpen === false ? `<span class="badge badge-danger">Closed</span>` :
+              `<span class="badge badge-light">Hours: unknown</span>`
+            }
+            ${
+              showAge
+                ? `<span class="badge badge-light">age: ${ageText}</span>${ sinceText ? ` <span class="badge badge-dark">since ${sinceText}</span>` : '' }`
+                : ''
+            }
+          </div>
+          <div class="actions mt-2">
+            <a href="${mapsLink}" target="_blank" rel="noopener">Open in Maps</a>
+            <a href="${dirLink}" target="_blank" rel="noopener">Directions</a>
+          </div>
+          ${ photoUrl ? `<img class="thumb" src="${photoUrl}" alt="${name}">` : '' }
+        </div>
+      `;
+    }
+
+    function createMarker(place){
+      const marker = new google.maps.Marker({
+        map,
+        title: place.name,
+        position: place.geometry.location
+      });
+      marker.__place = place;
+
+      marker.addListener('click', async () => {
+        let meta = metaCache.get(place.place_id);
+        if (!meta) {
+          // Show a quick skeleton while fetching
+          infoWin.setContent(`<div class="iw"><h6>${place.name}</h6><div class="meta">Loading details…</div></div>`);
+          infoWin.open(map, marker);
+          try { meta = await getPlaceMeta(place); } catch(_) {}
+        }
+        infoWin.setContent(buildInfoHTML(place, metaCache.get(place.place_id)));
+        infoWin.open(map, marker);
+      });
+
+      return marker;
+    }
+
     function paintList(list, {resultsEl}){
       resultsEl.innerHTML = "";
       const frag = document.createDocumentFragment();
@@ -350,8 +435,8 @@
         `;
         frag.appendChild(a);
 
-        // Marker
-        markers.push(new google.maps.Marker({ map, title: place.name, position: place.geometry.location }));
+        // Marker with InfoWindow click
+        markers.push(createMarker(place));
 
         // Open/closed label handling + (if New) age/since updates after details arrive
         const statusEl = a.querySelector(`.open-status[data-pid="${pid}"]`);
@@ -420,6 +505,7 @@
 
       resultsEl.innerHTML = "";
       clearMarkers();
+      infoWin && infoWin.close();
       if (!places || !places.length) return;
 
       smartOriginAndRadius(places, slider, noticeEl);
@@ -535,3 +621,4 @@
   </script>
 </body>
 </html>
+```
