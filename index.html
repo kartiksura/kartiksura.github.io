@@ -1,58 +1,296 @@
+
+
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" >
+
 <head>
-  <!-- Google tag (gtag.js) -->
-  <script async src="https://www.googletagmanager.com/gtag/js?id=G-9H97RK50TD"></script>
-  <script>
-    window.dataLayer = window.dataLayer || [];
-    function gtag(){dataLayer.push(arguments);}
-    gtag('js', new Date());
-    gtag('config', 'G-9H97RK50TD');
-  </script>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-9H97RK50TD"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
 
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  gtag('config', 'G-9H97RK50TD');
+</script>
+  
+  <meta charset="UTF-8">
+  
+<link rel="apple-touch-icon" type="image/png" href="https://cpwebassets.codepen.io/assets/favicon/apple-touch-icon-5ae1a0698dcc2402e9712f7d01ed509a57814f994c660df9f7a952f3060705ee.png" />
+<meta name="apple-mobile-web-app-title" content="CodePen">
+
+<link rel="shortcut icon" type="image/x-icon" href="https://cpwebassets.codepen.io/assets/favicon/favicon-aec34940fbc1a6e787974dcd360f2c6b63348d4b1f4e06c77743096d55480f33.ico" />
+
+<link rel="mask-icon" type="image/x-icon" href="https://cpwebassets.codepen.io/assets/favicon/logo-pin-8f3771b1072e3c38bd662872f6b673a722f4b3ca2421637d5596661b4e2132cc.svg" color="#111" />
+
+
   <title>Find popular places around you</title>
+  
+  
+  <link rel='stylesheet' href='https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.1.2/css/bootstrap.min.css'>
+<link rel='stylesheet' href='https://use.fontawesome.com/releases/v5.3.1/css/all.css'>
+  
+<style>
+#map {
+  height: 10%;
+}
 
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.1.2/css/bootstrap.min.css">
-  <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.3.1/css/all.css">
+#header {
+  width: 100%;
+  height: 300px;
+  background: black;
+}
 
-  <style>
-    :root {
-      --panel-bg: #ffffff;
-      --app-bg: #f7f8fa;
-      --card-border: #e6e8eb;
+body {
+  background: #000;
+  font-family: "Open Sans", sans-serif;
+}
+
+.image-parent {
+  max-width: 190px;
+}
+
+.search {
+  width: 100%;
+  position: relative;
+  display: flex;
+}
+
+.searchTerm {
+  width: 100%;
+  border: 3px solid #00b4cc;
+  padding: 5px;
+  height: 60px;
+  border-radius: 5px 5px 5px 5px;
+  outline: none;
+  font-size: 20px;
+}
+
+.list-group {
+  width: 100%;
+  font-size: 20px;
+  color: #000;
+}
+
+/*Resize the wrap to see the search bar change!*/
+.wrap {
+  width: 80%;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+</style>
+
+  
+  
+  
+    <h1 class="text-warning" style="text-align:center">Find popular places</h1>
+    <h4 class="text-secondary" style="text-align:center">Powered by Google Maps, this sorts the places by their number of reviews, rather than average rating.</h4>
+    <h4 class="text-secondary" style="text-align:center"> This helps in finding popular places, esp in touristy areas</h4>
+
+</head>
+
+<body translate="no" >
+  <html>
+
+<body>
+  <div id="header">
+
+  </div>
+  <div class="wrap">
+    <div class="search">
+
+    </div>
+  </div>
+  <div class="container">
+
+    <input id="pac-input" class="searchTerm" placeholder="E.g. Cafes near Whitefield">
+
+    <div>
+      <!--         <input id="pac-input" class="control" type="text" placeholder="e.g. Cafes in bellandur" /> -->
+      <!--         <input id="pac-input" type="text" class="searchTerm" placeholder="What are you looking for?"> -->
+
+      <div class="list-group" id="ticketdiv">
+        <div id="map"></div>
+
+      </div>
+    </div>
+  </div>
+
+  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBCDJZDoS6NBc0JYuk11tx7v2kmIKR5I1I&callback=initAutocomplete&libraries=places&v=weekly" defer></script>
+  <script src="assets/js/Java.js"></script>
+  <div class="footer">
+        <p class="text-secondary" style="text-align:center"></p>
+
+    <p class="text-secondary" style="text-align:center">There are bunch of alternative algorithms, maybe weight with number of 5 stars, etc. </p>
+    <p style="text-align:center"><a href="https://forms.gle/HCXEhe5EnspUp5778">Click here to provide quick feeback, feature requests, and maybe a cool story</a></p>
+</body>
+
+</html>
+  
+  <script src='https://cdnjs.cloudflare.com/ajax/libs/jquery/3.3.1/jquery.min.js'></script>
+<script src='https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.4/popper.min.js'></script>
+<script src='https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.min.js'></script>
+      <script id="rendered-js" >
+/**
+ * @license
+ * Copyright 2019 Google LLC. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+// @ts-nocheck TODO remove when fixed
+// This example adds a search box to a map, using the Google Place Autocomplete
+// feature. People can enter geographical searches. The search box will return a
+// pick list containing a mix of places and predicted search terms.
+// This example requires the Places library. Include the libraries=places
+// parameter when you first load the API. For example:
+// <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&libraries=places">
+function getValue(data, path) {
+  var i,
+    len = path.length;
+  for (i = 0; typeof data === "object" && i < len; ++i) {
+    data = data[path[i]];
+  }
+  return data;
+}
+
+function initAutocomplete() {
+  var mydiv = document.getElementById("ticketdiv");
+
+  const map = new google.maps.Map(document.getElementById("map"), {
+    center: { lat: -33.8688, lng: 151.2195 },
+    zoom: 17,
+    mapTypeId: "roadmap"
+  });
+
+  if (navigator.geolocation) {
+    var location_timeout = setTimeout("geolocFail()", 10000);
+
+    navigator.geolocation.getCurrentPosition(function (position) {
+      clearTimeout(location_timeout);
+
+      const pos = {
+        lat: position.coords.latitude,
+        lng: position.coords.longitude
+      };
+      map.setCenter(pos);
+    });
+  }
+
+  // Create the search box and link it to the UI element.
+  const input = document.getElementById("pac-input");
+  const searchBox = new google.maps.places.SearchBox(input);
+
+  map.controls[google.maps.ControlPosition.TOP_LEFT].push(input);
+  // Bias the SearchBox results towards current map's viewport.
+  map.addListener("bounds_changed", () => {
+    searchBox.setBounds(map.getBounds());
+  });
+
+  let markers = [];
+
+  // Listen for the event fired when the user selects a prediction and retrieve
+  // more details for that place.
+  searchBox.addListener("places_changed", () => {
+    const places = searchBox.getPlaces();
+    mydiv.innerHTML = "";
+
+    if (places.length == 0) {
+      return;
     }
-    html, body { height: 100%; }
-    body {
-      background: var(--app-bg);
-      font-family: "Open Sans", system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans";
-      margin: 0;
-      /* allow overlays like the Places suggestions to show */
-      overflow: auto;
-    }
-    .app {
-      display: grid;
-      grid-template-columns: 420px 1fr;
-      height: 100vh;
-      width: 100vw;
-    }
-    @media (max-width: 992px) {
-      .app {
-        grid-template-columns: 1fr;
-        grid-template-rows: 54vh 46vh; /* list on top, map below */
+    // Clear out the old markers.
+    markers.forEach((marker) => {
+      marker.setMap(null);
+    });
+    markers = [];
+
+    // For each place, get the icon, name and location.
+    const bounds = new google.maps.LatLngBounds();
+    //sort the places by ratings
+    places.sort((a, b) => b.user_ratings_total - a.user_ratings_total);
+
+    places.forEach((place) => {
+      if (!place.geometry || !place.geometry.location) {
+        console.log("Returned place contains no geometry");
+        return;
       }
-    }
 
-    /* Sidebar (results) */
-    .results-panel {
-      background: var(--panel-bg);
-      border-right: 1px solid var(--card-border);
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-      position: relative;
-    }
-    .panel-header {
-      padding: 14px 16px;
-      border-bottom: 1px solid v
+      const icon = {
+        url: place.icon,
+        size: new google.maps.Size(71, 71),
+        origin: new google.maps.Point(0, 0),
+        anchor: new google.maps.Point(17, 34),
+        scaledSize: new google.maps.Size(25, 25)
+      };
+      console.log("Places info:" + JSON.stringify(place, null, 4));
+
+      var info = {
+        name: place.name,
+        photo: null,
+        user_ratings_total: place.user_ratings_total,
+        isOpen: getValue(place, ["opening_hours", "open_now"]),
+        maps_link:
+          "https://www.google.com/maps/search/?api=1&query=" +
+          encodeURIComponent(place.formatted_address) +
+          "&query_place_id=" +
+          place.place_id
+      };
+
+      if (place.photos && Array.isArray(place.photos)) {
+        info.photo = place.photos[0].getUrl();
+      }
+
+      console.log("Parsed info:" + JSON.stringify(info, null, 4));
+      //////////////////////
+      mydiv.innerHTML += `<a href=${
+        info.maps_link
+      } class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+          <div class="flex-column" span class="bolded"  >
+             <strong class="text-dark"> ${info.name}</strong>
+            ${
+              info.isOpen == true
+                ? "<p class=text-primary><small> Open now</small></p>"
+                : "<p class=text-danger><small> Closed</small></p>"
+            }
+            
+            <span class="badge badge-info badge-pill">${
+              info.user_ratings_total
+            } ratings</span>
+
+          </div>
+          <div class="image-parent">
+              <img src=${info.photo} class="img-fluid" alt="quixote">
+          </div>
+        </a>`;
+
+      //////////////////////
+
+      // Create a marker for each place.
+      markers.push(
+        new google.maps.Marker({
+          map,
+          icon,
+          title: place.name,
+          position: place.geometry.location
+        })
+      );
+      if (place.geometry.viewport) {
+        // Only geocodes have viewport.
+        bounds.union(place.geometry.viewport);
+      } else {
+        bounds.extend(place.geometry.location);
+      }
+    });
+    map.fitBounds(bounds);
+  });
+}
+
+window.initAutocomplete = initAutocomplete;
+    </script>
+
+  
+
+</body>
+
+</html>
+ 
