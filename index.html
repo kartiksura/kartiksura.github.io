@@ -1,545 +1,171 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <!-- Google tag (gtag.js) -->
-  <script async src="https://www.googletagmanager.com/gtag/js?id=G-9H97RK50TD"></script>
-  <script>
-    window.dataLayer = window.dataLayer || [];
-    function gtag(){dataLayer.push(arguments);}
-    gtag('js', new Date());
-    gtag('config', 'G-9H97RK50TD');
-  </script>
-
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Find popular places around you</title>
 
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.1.2/css/bootstrap.min.css">
-  <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.3.1/css/all.css">
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-9H97RK50TD"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);} gtag('js', new Date()); gtag('config', 'G-9H97RK50TD');
+  </script>
 
+  <link rel='stylesheet' href='https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.1.2/css/bootstrap.min.css'>
+  <link rel='stylesheet' href='https://use.fontawesome.com/releases/v5.3.1/css/all.css'>
   <style>
     :root {
-      --panel-bg: #ffffff;
-      --app-bg: #f7f8fa;
-      --card-border: #e6e8eb;
+      --map-height-mobile: 240px;
+      --map-height-desktop: 360px;
     }
-    html, body { height: 100%; }
-    body {
-      background: var(--app-bg);
-      font-family: "Open Sans", system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans";
-      margin: 0;
-      overflow: auto;
-    }
-    .app {
-      display: grid;
-      grid-template-columns: 420px 1fr;
-      height: 100vh;
-      width: 100vw;
-    }
-    @media (max-width: 992px) {
-      .app {
-        grid-template-columns: 1fr;
-        grid-template-rows: 54vh 46vh;
-      }
-    }
+    body { background: #000; font-family: "Open Sans", sans-serif; }
 
-    .results-panel {
-      background: var(--panel-bg);
-      border-right: 1px solid var(--card-border);
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-      position: relative;
-    }
-    .panel-header {
-      padding: 14px 16px;
-      border-bottom: 1px solid var(--card-border);
-      background: #fff;
-      position: sticky;
-      top: 0;
-      z-index: 20;
-      overflow: visible;
-    }
-    .pac-container { z-index: 2000 !important; }
-    .title { margin: 0 0 8px 0; font-weight: 700; font-size: 20px; }
+    #header { width: 100%; height: 220px; background: #000; }
 
-    .search-row {
-      display: grid;
-      grid-template-columns: 1fr 130px 150px 40px;
-      grid-gap: 8px;
-    }
-    @media (max-width: 520px) {
-      .search-row { grid-template-columns: 1fr; }
-    }
+    /* FIX 1: give the map an explicit pixel height so it renders and doesn't overlap content */
+    #map { height: var(--map-height-mobile); border-radius: .5rem; }
+    @media (min-width: 768px) { #map { height: var(--map-height-desktop); } }
 
-    .chipbar {
-      display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px;
-    }
-    .chip {
-      border: 1px solid var(--card-border);
-      border-radius: 999px;
-      padding: 4px 10px;
-      font-size: 12px;
-      cursor: pointer;
-      background: #fff;
-    }
-    .chip.active { border-color: #0d6efd; color: #0d6efd; background: #eff6ff; }
+    .wrap { width: 80%; max-width: 900px; margin: 0 auto; }
 
-    .results-scroll { overflow-y: auto; padding: 14px 16px; }
-    .empty { color: #6c757d; text-align: center; padding: 24px 8px; }
+    .searchTerm { width: 100%; border: 3px solid #00b4cc; padding: 5px 12px; height: 56px; border-radius: 6px; outline: none; font-size: 18px; }
 
-    #map { width: 100%; height: 100%; }
+    .list-group { width: 100%; font-size: 18px; color: #000; }
 
-    .place-card {
-      display: grid;
-      grid-template-columns: 110px 1fr;
-      grid-gap: 12px;
-      border: 1px solid var(--card-border);
-      border-radius: 14px;
-      overflow: hidden;
-      margin-bottom: 12px;
-      background: #fff;
-      transition: box-shadow .18s ease, transform .18s ease;
-      cursor: pointer;
-    }
-    .place-card:hover { box-shadow: 0 8px 20px rgba(0,0,0,0.08); transform: translateY(-1px); }
-    .place-card.active { box-shadow: 0 0 0 2px #0d6efd inset; }
-    .place-photo { width: 110px; height: 110px; object-fit: cover; background: #f1f3f5; }
-    .place-content { padding: 10px 10px 10px 0; display: flex; flex-direction: column; justify-content: space-between; }
-    .place-title { margin: 0; font-size: 16px; font-weight: 700; color: #222; line-height: 1.2; }
-    .meta { font-size: 13px; color: #495057; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-    .badge-open { display: inline-flex; align-items: center; gap: 6px; background: #e9f9ef; color: #198754; border: 1px solid #bfe9cf; font-size: 12px; padding: 2px 8px; border-radius: 999px; }
-    .badge-closed { display: inline-flex; align-items: center; gap: 6px; background: #fff1f0; color: #dc3545; border: 1px solid #ffd3d6; font-size: 12px; padding: 2px 8px; border-radius: 999px; }
-    .stars { color: #f1c40f; letter-spacing: 1px; font-size: 14px; }
-    .actions { display: flex; gap: 8px; flex-wrap: wrap; }
-    .btn-slim { padding: 6px 10px; font-size: 12px; border-radius: 8px; }
+    /* Ensure list items stack and are visible */
+    .list-group-item { display: block; }
 
-    .footer-note {
-      padding: 10px 16px 14px 16px;
-      border-top: 1px solid var(--card-border);
-      background: #fff;
-      font-size: 12px; color: #6c757d;
-    }
+    /* Avoid any accidental overlap from positioned children inside Google Maps */
+    #results { position: relative; z-index: 1; }
 
-    /* Origin pin label */
-    .origin-label {
-      position: absolute;
-      top: 8px; left: 8px;
-      background: rgba(255,255,255,0.95);
-      border: 1px solid var(--card-border);
-      border-radius: 8px;
-      padding: 6px 10px;
-      font-size: 12px;
-      z-index: 5;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-    }
+    .image-parent { max-width: 190px; }
+
+    .place-thumb { width: 100%; height: 120px; object-fit: cover; border-radius: .5rem; }
   </style>
 </head>
 <body>
-  <div class="app">
-    <!-- Results Sidebar -->
-    <aside class="results-panel">
-      <div class="panel-header">
-        <h1 class="title text-primary mb-1">Find popular places</h1>
-        <div class="text-muted small mb-2">Sort by reviews, rating, or popularity (rating × reviews), with a distance filter.</div>
+  <header id="header" class="d-flex flex-column justify-content-center align-items-center text-center">
+    <h1 class="text-warning mb-2">Find popular places</h1>
+    <h4 class="text-secondary mb-1">Powered by Google Maps, sorted by number of reviews</h4>
+    <h6 class="text-secondary">Great for touristy areas where popularity matters</h6>
+  </header>
 
-        <div class="search-row">
-          <input id="pac-input" class="form-control" placeholder="Try: Cafes near Whitefield" />
-          <select id="sort-select" class="custom-select">
-            <option value="reviews" selected>Sort: Reviews</option>
-            <option value="rating">Sort: Rating</option>
-            <option value="popularity">Sort: Popularity</option>
-          </select>
-          <select id="radius-select" class="custom-select" title="Search radius">
-            <option value="0.5">0.5 km</option>
-            <option value="1">1 km</option>
-            <option value="2" selected>2 km</option>
-            <option value="5">5 km</option>
-            <option value="10">10 km</option>
-            <option value="20">20 km</option>
-          </select>
-          <button id="search-btn" class="btn btn-primary" title="Search"><i class="fas fa-search"></i></button>
-        </div>
+  <main class="container pb-4">
+    <div class="wrap">
+      <input id="pac-input" class="searchTerm mb-3" placeholder="E.g. Cafes near Whitefield" />
 
-        <div class="chipbar mt-2">
-          <span class="chip" data-quick="Cafes">Cafes</span>
-          <span class="chip" data-quick="Restaurants">Restaurants</span>
-          <span class="chip" data-quick="Breakfast">Breakfast</span>
-          <span class="chip" data-quick="Bars">Bars</span>
-        </div>
-        <div class="small text-muted mt-2">Searches use the current map center. Pan/zoom to adjust your origin or use geolocation.</div>
-      </div>
+      <div id="map" class="mb-3"></div>
 
-      <div id="places-list" class="results-scroll">
-        <div class="empty">Search for places to see results here.</div>
-      </div>
+      <div id="results" class="list-group"></div>
+    </div>
 
-      <div class="footer-note">
-        Tip: Popularity = rating × number of reviews.  
-        <div><a href="https://forms.gle/HCXEhe5EnspUp5778" target="_blank">Send feedback & feature requests</a></div>
-      </div>
-    </aside>
-
-    <!-- Map -->
-    <main id="map">
-      <div class="origin-label" id="origin-label">Origin: map center</div>
-    </main>
-  </div>
-
-  <!-- Google Maps JS (Places library) -->
-  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBCDJZDoS6NBc0JYuk11tx7v2kmIKR5I1I&callback=initAutocomplete&libraries=places&v=weekly" defer></script>
-
-  <!-- Dependencies -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.4/popper.min.js"></script>
-  <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.min.js"></script>
+    <div class="footer text-center mt-4">
+      <p class="text-secondary mb-1">There are alternative algorithms (e.g., weight 5★ more, etc.).</p>
+      <p class="mb-0"><a href="https://forms.gle/HCXEhe5EnspUp5778">Send feedback or feature requests</a></p>
+    </div>
+  </main>
 
   <script>
-    // ------- Utilities -------
-    const PLACEHOLDER_IMG = "https://via.placeholder.com/110x110?text=No+Image";
-
+    // Utility to safely read nested fields
     function getValue(data, path) {
-      let i, len = path.length;
-      for (i = 0; typeof data === "object" && i < len; ++i) data = data[path[i]];
+      for (let i = 0; typeof data === "object" && i < path.length; ++i) data = data[path[i]];
       return data;
     }
-    function starsFromRating(r) {
-      if (!r) return "☆☆☆☆☆";
-      const full = Math.round(r);
-      return "★".repeat(full) + "☆".repeat(5 - full);
-    }
-    function fmtInt(x) {
-      if (!x && x !== 0) return "0";
-      if (x >= 1000000) return (x/1000000).toFixed(1) + "M";
-      if (x >= 1000) return (x/1000).toFixed(1) + "k";
-      return x.toString();
-    }
-    const kmToMeters = km => Math.max(1, Math.round(parseFloat(km) * 1000));
 
-    // ------- App State -------
-    let map, searchBox, placesService, markers = [], originMarker = null;
-    let currentPlaces = [];
-    const placeIdToCard = new Map();
-    const placeIdToMarker = new Map();
-
-    // ------- Sorting -------
-    function sortPlaces(places, mode) {
-      const safe = p => ({
-        rating: p.rating || 0,
-        reviews: p.user_ratings_total || 0
-      });
-      if (mode === "rating") {
-        places.sort((a,b) => (safe(b).rating - safe(a).rating) || (safe(b).reviews - safe(a).reviews));
-      } else if (mode === "popularity") {
-        places.sort((a,b) => (safe(b).rating*safe(b).reviews) - (safe(a).rating*safe(a).reviews));
-      } else {
-        places.sort((a,b) => safe(b).reviews - safe(a).reviews);
-      }
-    }
-
-    // ------- Rendering -------
-    function renderPlaces(places) {
-      const list = document.getElementById("places-list");
-      list.innerHTML = "";
-      placeIdToCard.clear();
-
-      if (!places || !places.length) {
-        list.innerHTML = '<div class="empty">No results. Try a broader query or increase the radius.</div>';
-        return;
-      }
-
-      places.forEach(place => {
-        const info = {
-          id: place.place_id,
-          name: place.name,
-          rating: place.rating,
-          reviews: place.user_ratings_total || 0,
-          isOpen: getValue(place, ["opening_hours", "open_now"]),
-          photo: null,
-          address: place.formatted_address || place.vicinity || "",
-          maps_link:
-            "https://www.google.com/maps/search/?api=1&query=" +
-            encodeURIComponent(place.formatted_address || place.name) +
-            "&query_place_id=" + place.place_id
-        };
-
-        if (place.photos && Array.isArray(place.photos) && place.photos[0]) {
-          try { info.photo = place.photos[0].getUrl({maxWidth: 300, maxHeight: 300}); }
-          catch(e) { info.photo = PLACEHOLDER_IMG; }
-        } else {
-          info.photo = PLACEHOLDER_IMG;
-        }
-
-        const card = document.createElement("div");
-        card.className = "place-card";
-        card.dataset.placeId = info.id;
-        card.innerHTML = `
-          <img class="place-photo" src="${info.photo}" alt="Photo of ${info.name}" />
-          <div class="place-content">
-            <div>
-              <h3 class="place-title">${info.name}</h3>
-              <div class="meta">
-                <span class="stars" title="${info.rating || "N/A"} / 5">${starsFromRating(info.rating)}</span>
-                <span class="text-muted">(${fmtInt(info.reviews)} reviews)</span>
-                ${
-                  info.isOpen === true
-                    ? '<span class="badge-open"><i class="far fa-clock"></i> Open now</span>'
-                    : info.isOpen === false
-                      ? '<span class="badge-closed"><i class="far fa-clock"></i> Closed</span>'
-                      : ''
-                }
-              </div>
-              ${info.address ? `<div class="text-muted small mt-1">${info.address}</div>` : ''}
-            </div>
-            <div class="actions">
-              <a class="btn btn-primary btn-slim" href="${info.maps_link}" target="_blank" rel="noopener">View on Maps</a>
-              <button class="btn btn-outline-secondary btn-slim btn-zoom" type="button">Focus on map</button>
-            </div>
-          </div>
-        `;
-        card.addEventListener("click", (e) => {
-          if (!e.target.classList.contains("btn-zoom")) focusPlace(info.id, true);
-        });
-        card.querySelector(".btn-zoom").addEventListener("click", (e) => {
-          e.stopPropagation();
-          focusPlace(info.id, true);
-        });
-
-        list.appendChild(card);
-        placeIdToCard.set(info.id, card);
-      });
-    }
-
-    function highlightCard(placeId) {
-      document.querySelectorAll(".place-card.active").forEach(el => el.classList.remove("active"));
-      const card = placeIdToCard.get(placeId);
-      if (card) {
-        card.classList.add("active");
-        const container = document.getElementById("places-list");
-        const top = card.offsetTop - 16;
-        container.scrollTo({ top, behavior: "smooth" });
-      }
-    }
-
-    // ------- Map / Markers -------
-    function clearMarkers() {
-      markers.forEach(m => m.setMap(null));
-      markers = [];
-      placeIdToMarker.clear();
-    }
-
-    function addMarkers(places) {
-      clearMarkers();
-      const bounds = new google.maps.LatLngBounds();
-
-      places.forEach((place, idx) => {
-        if (!place.geometry || !place.geometry.location) return;
-        const marker = new google.maps.Marker({
-          map,
-          position: place.geometry.location,
-          title: place.name,
-          label: String(Math.min(idx + 1, 99)),
-          animation: google.maps.Animation.DROP
-        });
-        marker.addListener("click", () => focusPlace(place.place_id, false));
-        markers.push(marker);
-        placeIdToMarker.set(place.place_id, marker);
-
-        if (place.geometry.viewport) bounds.union(place.geometry.viewport);
-        else bounds.extend(place.geometry.location);
-      });
-
-      // Include origin in bounds to keep context
-      if (originMarker) bounds.extend(originMarker.getPosition());
-      if (!bounds.isEmpty()) map.fitBounds(bounds);
-    }
-
-    function setOriginMarker(latLng) {
-      if (originMarker) originMarker.setMap(null);
-      originMarker = new google.maps.Marker({
-        map,
-        position: latLng,
-        title: "Search origin",
-        icon: {
-          path: google.maps.SymbolPath.CIRCLE,
-          scale: 6,
-          fillColor: "#0d6efd",
-          fillOpacity: 1,
-          strokeWeight: 2,
-          strokeColor: "#ffffff"
-        }
-      });
-      const label = document.getElementById("origin-label");
-      label.textContent = `Origin: ${latLng.lat().toFixed(5)}, ${latLng.lng().toFixed(5)}`;
-    }
-
-    function focusPlace(placeId, bounceMarker = false) {
-      const marker = placeIdToMarker.get(placeId);
-      if (!marker) return;
-      map.panTo(marker.getPosition());
-      map.setZoom(Math.max(map.getZoom(), 16));
-      if (bounceMarker) {
-        marker.setAnimation(google.maps.Animation.BOUNCE);
-        setTimeout(() => marker.setAnimation(null), 800);
-      }
-      highlightCard(placeId);
-    }
-
-    // ------- Search helpers -------
-    function performNearbySearch(keyword, radiusKm) {
-      if (!keyword || !keyword.trim()) return;
-      const center = map.getCenter();
-      if (!center) return;
-
-      // Set/refresh origin marker
-      setOriginMarker(center);
-
-      const request = {
-        location: center,
-        radius: kmToMeters(radiusKm), // meters
-        keyword: keyword.trim()
-      };
-
-      placesService.nearbySearch(request, (results, status, pagination) => {
-        if (status !== google.maps.places.PlacesServiceStatus.OK || !results) {
-          renderPlaces([]);
-          clearMarkers();
-          return;
-        }
-        currentPlaces = results.slice(); // mutable copy
-        const mode = document.getElementById("sort-select").value;
-        sortPlaces(currentPlaces, mode);
-        renderPlaces(currentPlaces);
-        addMarkers(currentPlaces);
-
-        // Optionally auto-load more pages:
-        // if (pagination && pagination.hasNextPage) pagination.nextPage();
-      });
-    }
-
-    // Keep text search for autocomplete-selected places or manual fallback
-    function performTextSearch(query) {
-      if (!query || !query.trim()) return;
-      const request = { query: query.trim(), locationBias: map.getCenter() };
-      placesService.textSearch(request, (results, status) => {
-        if (status !== google.maps.places.PlacesServiceStatus.OK || !results) {
-          renderPlaces([]);
-          clearMarkers();
-          return;
-        }
-        currentPlaces = results.slice();
-        const mode = document.getElementById("sort-select").value;
-        sortPlaces(currentPlaces, mode);
-        renderPlaces(currentPlaces);
-        addMarkers(currentPlaces);
-      });
-    }
-
-    // ------- Main Init -------
     function initAutocomplete() {
-      const input = document.getElementById("pac-input");
-      const sortSelect = document.getElementById("sort-select");
-      const radiusSelect = document.getElementById("radius-select");
-      const searchBtn = document.getElementById("search-btn");
-      const chips = document.querySelectorAll(".chip");
+      const results = document.getElementById("results");
 
-      map = new google.maps.Map(document.getElementById("map"), {
-        center: { lat: 12.9716, lng: 77.5946 }, // Bengaluru fallback
-        zoom: 13,
-        mapTypeControl: false,
-        streetViewControl: false,
-        fullscreenControl: true
+      const map = new google.maps.Map(document.getElementById("map"), {
+        center: { lat: -33.8688, lng: 151.2195 },
+        zoom: 15,
+        mapTypeId: "roadmap",
       });
 
-      // Places services
-      placesService = new google.maps.places.PlacesService(map);
-      searchBox = new google.maps.places.SearchBox(input);
-
-      // Geolocate center if possible
       if (navigator.geolocation) {
-        const timeoutId = setTimeout(() => {}, 8000);
-        navigator.geolocation.getCurrentPosition(pos => {
-          clearTimeout(timeoutId);
-          const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-          map.setCenter(loc);
-          setOriginMarker(new google.maps.LatLng(loc));
-        }, () => {
-          setOriginMarker(map.getCenter());
+        const location_timeout = setTimeout(() => {/* noop fallback */}, 8000);
+        navigator.geolocation.getCurrentPosition((position) => {
+          clearTimeout(location_timeout);
+          map.setCenter({ lat: position.coords.latitude, lng: position.coords.longitude });
         });
-      } else {
-        setOriginMarker(map.getCenter());
       }
 
-      // Bias to viewport
-      map.addListener("bounds_changed", () => {
-        const b = map.getBounds();
-        if (b) searchBox.setBounds(b);
-      });
+      // Keep the input where it is in the layout (NOT inside map controls) for predictable desktop layout
+      const input = document.getElementById("pac-input");
+      const searchBox = new google.maps.places.SearchBox(input);
 
-      // Update origin marker when user pans map
-      map.addListener("idle", () => setOriginMarker(map.getCenter()));
+      map.addListener("bounds_changed", () => searchBox.setBounds(map.getBounds()));
 
-      // If user selects an autocomplete suggestion, show those places OR center and do nearby
+      let markers = [];
+
       searchBox.addListener("places_changed", () => {
         const places = searchBox.getPlaces() || [];
+        results.innerHTML = "";
         if (!places.length) return;
 
-        // If a single place with geometry is selected, recenter and do a nearby search around it using current radius
-        const radiusKm = radiusSelect.value;
-        const place = places[0];
-        if (place.geometry && place.geometry.location) {
-          map.panTo(place.geometry.location);
-          map.setZoom(15);
-          setOriginMarker(place.geometry.location);
-          // Use the input text as keyword for nearby around the selected place
-          performNearbySearch(input.value, radiusKm);
-          return;
-        }
+        // Clear markers
+        markers.forEach((m) => m.setMap(null));
+        markers = [];
 
-        // Fallback: render returned places as-is
-        currentPlaces = places.slice();
-        sortPlaces(currentPlaces, sortSelect.value);
-        renderPlaces(currentPlaces);
-        addMarkers(currentPlaces);
-      });
+        const bounds = new google.maps.LatLngBounds();
 
-      // Explicit search triggers Nearby Search with radius
-      function runSearch() {
-        const q = input.value;
-        const r = radiusSelect.value;
-        performNearbySearch(q, r);
-      }
-      input.addEventListener("keydown", (e) => { if (e.key === "Enter") runSearch(); });
-      searchBtn.addEventListener("click", runSearch);
+        // Sort primarily by number of reviews (popularity)
+        places.sort((a, b) => (b.user_ratings_total || 0) - (a.user_ratings_total || 0));
 
-      // Quick chips → keyword for nearby search
-      chips.forEach(chip => {
-        chip.addEventListener("click", () => {
-          chips.forEach(c => c.classList.remove("active"));
-          chip.classList.add("active");
-          input.value = chip.dataset.quick || "";
-          runSearch();
+        places.forEach((place) => {
+          if (!place.geometry || !place.geometry.location) return;
+
+          const info = {
+            name: place.name,
+            rating: place.rating ?? "N/A",
+            user_ratings_total: place.user_ratings_total ?? 0,
+            isOpen: getValue(place, ["opening_hours", "open_now"]) ?? null,
+            photo: null,
+            address: place.formatted_address || "",
+            maps_link: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.formatted_address || place.name)}&query_place_id=${place.place_id}`,
+          };
+
+          if (Array.isArray(place.photos) && place.photos.length) {
+            try { info.photo = place.photos[0].getUrl({ maxWidth: 600, maxHeight: 400 }); } catch (_) {}
+          }
+
+          const thumb = info.photo ||
+            "https://upload.wikimedia.org/wikipedia/commons/6/65/No-Image-Placeholder.svg";
+
+          // Render list item
+          const html = `
+            <a href="${info.maps_link}" target="_blank" rel="noopener" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center mb-2">
+              <div class="flex-grow-1 pr-3">
+                <strong class="text-dark d-block">${info.name}</strong>
+                <small class="text-muted d-block">${info.address}</small>
+                ${info.isOpen === true ? `<span class="badge badge-success mr-2">Open now</span>` : info.isOpen === false ? `<span class="badge badge-danger mr-2">Closed</span>` : ""}
+                <span class="badge badge-info">${info.user_ratings_total} ratings</span>
+                ${info.rating !== "N/A" ? `<span class="ml-2">⭐ ${info.rating}</span>` : ""}
+              </div>
+              <div class="image-parent">
+                <img src="${thumb}" alt="${info.name}" class="place-thumb" />
+              </div>
+            </a>`;
+
+          results.insertAdjacentHTML('beforeend', html);
+
+          // Marker
+          markers.push(new google.maps.Marker({ map, title: place.name, position: place.geometry.location }));
+
+          if (place.geometry.viewport) bounds.union(place.geometry.viewport); else bounds.extend(place.geometry.location);
         });
-      });
 
-      // Resort without requerying
-      sortSelect.addEventListener("change", () => {
-        if (!currentPlaces.length) return;
-        sortPlaces(currentPlaces, sortSelect.value);
-        renderPlaces(currentPlaces);
-        addMarkers(currentPlaces);
-      });
-
-      // Radius change → re-run with same keyword if we have one
-      radiusSelect.addEventListener("change", () => {
-        const q = input.value;
-        if (q && q.trim()) runSearch();
+        map.fitBounds(bounds);
       });
     }
 
-    // Expose for callback
     window.initAutocomplete = initAutocomplete;
   </script>
+
+  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBCDJZDoS6NBc0JYuk11tx7v2kmIKR5I1I&callback=initAutocomplete&libraries=places&v=weekly" defer></script>
+
+  <script src='https://cdnjs.cloudflare.com/ajax/libs/jquery/3.3.1/jquery.min.js'></script>
+  <script src='https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.4/popper.min.js'></script>
+  <script src='https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.min.js'></script>
 </body>
 </html>
