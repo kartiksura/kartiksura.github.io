@@ -111,6 +111,10 @@
     let userPos = null; // google.maps.LatLng | null
     let distanceLimitKm = 5;
 
+    // Added: shared InfoWindow and PlacesService for marker clicks/details
+    let infoWindow;
+    let placesService;
+
     // Utility: compute distance in KM using Google geometry lib
     function distanceKm(originLatLng, destLatLng) {
       if (!originLatLng || !destLatLng) return Infinity;
@@ -133,9 +137,30 @@
       return '★'.repeat(r) + '☆'.repeat(5 - r);
     }
 
-    function formatDistance(km) {
-      if (!isFinite(km)) return '';
-      return `${km.toFixed(1)} km away`;
+    $1
+    // Build HTML for the marker info window (avoids template literals for easy injection)
+    function buildInfoHtml(info) {
+      var addr = info.formatted_address || info.vicinity || '';
+      var rating = info.rating;
+      var total = info.user_ratings_total || 0;
+      var distanceText = (info._distanceKm != null && isFinite(info._distanceKm)) ? (info._distanceKm.toFixed(1) + ' km') : '';
+      var website = info.website;
+      var phone = info.international_phone_number;
+      var link = info.link || info.url || (info.place_id ? ('https://www.google.com/maps/place/?q=place_id:' + info.place_id) : '#');
+      var stars = rating ? ('★'.repeat(Math.round(rating)) + '☆'.repeat(5 - Math.round(rating))) : '';
+      return [
+        '<div style="max-width:260px">',
+          '<div style="font-weight:700; margin-bottom:4px;">', (info.name || 'Place'), '</div>',
+          rating ? ('<div><span class="text-warning">' + stars + '</span> <span>(' + total + ')</span></div>') : '',
+          addr ? ('<div style="color:#6c757d; font-size:12px;">' + addr + '</div>') : '',
+          distanceText ? ('<div style="color:#6c757d; font-size:12px; margin-top:4px;">' + distanceText + ' away</div>') : '',
+          '<div style="margin-top:6px;">',
+            '<a href="', link, '" target="_blank" rel="noopener noreferrer">Open in Google Maps</a>',
+          '</div>',
+          website ? ('<div style="font-size:12px; margin-top:4px;"><a href="' + website + '" target="_blank" rel="noopener noreferrer">Website</a></div>') : '',
+          phone ? ('<div style="font-size:12px; color:#6c757d;">' + phone + '</div>') : '',
+        '</div>'
+      ].join('');
     }
 
     function renderListAndMarkers(places) {
@@ -203,6 +228,36 @@
             position: place.geometry.location,
           });
           markers.push(marker);
+          // Show details when a marker is clicked
+          marker.addListener('click', function() {
+            var base = {
+              name: info.name,
+              rating: info.rating,
+              user_ratings_total: info.user_ratings_total,
+              formatted_address: place.formatted_address || place.vicinity,
+              place_id: place.place_id,
+              link: info.link,
+              _distanceKm: info.distanceKm
+            };
+            if (infoWindow) {
+              infoWindow.close();
+              infoWindow.setContent(buildInfoHtml(base));
+              infoWindow.open(map, marker);
+            }
+            if (placesService && place.place_id) {
+              placesService.getDetails({
+                placeId: place.place_id,
+                fields: ['name','formatted_address','rating','user_ratings_total','opening_hours','website','international_phone_number','url','photos']
+              }, function(details, status) {
+                if (status === google.maps.places.PlacesServiceStatus.OK && details) {
+                  details._distanceKm = base._distanceKm;
+                  details.link = base.link;
+                  infoWindow.setContent(buildInfoHtml(details));
+                  infoWindow.open(map, marker);
+                }
+              });
+            }
+          });
           if (place.geometry.viewport) bounds.union(place.geometry.viewport); else bounds.extend(place.geometry.location);
         }
       });
@@ -243,6 +298,9 @@
         zoom: 14,
         mapTypeId: 'roadmap',
       });
+      // Initialize shared InfoWindow and PlacesService for marker clicks/details
+      infoWindow = new google.maps.InfoWindow();
+      placesService = new google.maps.places.PlacesService(map);
 
       // Try to use geolocation for origin
       if (navigator.geolocation) {
