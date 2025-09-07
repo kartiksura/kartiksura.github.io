@@ -67,19 +67,18 @@
   </style>
 
   <script>
-    // Muffle a noisy extension error that can look scary but is harmless:
+    // Muffle a noisy extension error:
     window.addEventListener('unhandledrejection', (e) => {
       const msg = String((e && e.reason && e.reason.message) || e.reason || '');
       if (msg.includes('A listener indicated an asynchronous response')) e.preventDefault();
     });
 
-    // Show status in the blue bar
     function setStatus(msg){
       const el = document.getElementById('statusbar');
       if (!el) return; el.textContent = msg; el.classList.add('show'); console.log('[status]', msg);
     }
 
-    // Simple distance helpers (fallback if geometry lib missing)
+    // Distance helpers
     function haversineKm(a,b){ const toRad=d=>d*Math.PI/180;
       const lat1=a.lat(),lon1=a.lng(),lat2=b.lat(),lon2=b.lng(),R=6371;
       const dLat=toRad(lat2-lat1), dLon=toRad(lon2-lon1);
@@ -91,18 +90,72 @@
     }
     const debounce = (fn, ms=650)=>{ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; };
 
-    // Open state (robust)
+    // -------- Robust OPEN/CLOSED calculation (manual by place local time) --------
+    function timeStrToMin(str){ // "HHMM" -> minutes
+      if (!str || typeof str !== 'string') return null;
+      const h = parseInt(str.slice(0,2), 10), m = parseInt(str.slice(2), 10);
+      if (Number.isNaN(h) || Number.isNaN(m)) return null;
+      return h*60 + m;
+    }
     function computeOpenState(details){
       const bs = details?.business_status;
       if (bs === 'CLOSED_PERMANENTLY') return 'permanently_closed';
       if (bs === 'CLOSED_TEMPORARILY') return 'temporarily_closed';
-      const coh = details?.current_opening_hours;
-      if (coh?.isOpen){ try { return coh.isOpen() ? 'open' : 'closed'; } catch(_){} }
-      const oh = details?.opening_hours;
-      if (oh?.isOpen){ try { return oh.isOpen() ? 'open' : 'closed'; } catch(_){} }
-      if (typeof oh?.open_now === 'boolean') return oh.open_now ? 'open' : 'closed';
-      return 'unknown';
+
+      const hours = details?.current_opening_hours || details?.opening_hours;
+      const periods = hours?.periods;
+      const offsetMin = Number.isFinite(details?.utc_offset_minutes) ? details.utc_offset_minutes : 0;
+
+      // If we have no schedule at all, last resort: try API helpers
+      if (!Array.isArray(periods) || !periods.length){
+        if (typeof hours?.isOpen === 'function'){ try { return hours.isOpen() ? 'open' : 'closed'; } catch(_){} }
+        if (typeof hours?.open_now === 'boolean') return hours.open_now ? 'open' : 'closed';
+        return 'unknown';
+      }
+
+      try{
+        // Place-local "now"
+        const nowUtc = new Date();
+        const placeNow = new Date(nowUtc.getTime() + offsetMin*60000);
+        const dow = placeNow.getDay(); // 0=Sun..6=Sat (same as Places)
+        const hm = placeNow.getHours()*60 + placeNow.getMinutes();
+
+        // Build today's intervals from weekly periods (handle overnight windows)
+        const intervals = [];
+        for (const p of periods){
+          const o = p.open, c = p.close;
+          if (!o || typeof o.day !== 'number') continue;
+          const oDay = o.day, oMin = timeStrToMin(o.time ?? "0000");
+          if (!c){ // no close -> treat as "open until midnight"
+            if (oDay === dow) intervals.push([oMin ?? 0, 1440]);
+            continue;
+          }
+          const cDay = c.day, cMin = timeStrToMin(c.time ?? "0000");
+          if (oDay === cDay){
+            if (oDay === dow && oMin != null && cMin != null) intervals.push([oMin, cMin]);
+          } else {
+            // overnight: open on oDay -> 24:00, then 00:00 -> close on cDay
+            if (dow === oDay && oMin != null) intervals.push([oMin, 1440]);
+            if (dow === cDay && cMin != null) intervals.push([0, cMin]);
+          }
+        }
+
+        if (!intervals.length){
+          // If the schedule didn't yield a window for today, fall back gracefully
+          if (typeof hours?.isOpen === 'function'){ try { return hours.isOpen() ? 'open' : 'closed'; } catch(_){} }
+          if (typeof hours?.open_now === 'boolean') return hours.open_now ? 'open' : 'closed';
+          return 'unknown';
+        }
+
+        const openNow = intervals.some(([s,e]) => hm >= s && hm < e);
+        return openNow ? 'open' : 'closed';
+      }catch(_){
+        if (typeof hours?.isOpen === 'function'){ try { return hours.isOpen() ? 'open' : 'closed'; } catch(_){} }
+        if (typeof hours?.open_now === 'boolean') return hours.open_now ? 'open' : 'closed';
+        return 'unknown';
+      }
     }
+    // ---------------------------------------------------------------------------
 
     // Globals
     let map, placesService, searchBox, infoWin;
@@ -124,13 +177,13 @@
     }
     window.gmapsReady = gmapsReady;
 
-    // Extra guard: if script loads but onload not called for some reason
+    // Guard if onload missed
     window.addEventListener('load', ()=>{
       setTimeout(()=>{
         if (window.google?.maps?.places && !map){
           setStatus('Fallback start (script loaded)'); startApp();
         } else if (!window.google?.maps){
-          setStatus('❌ Maps script failed to load. Check API key, billing, referrer restrictions, and that Places API is enabled.');
+          setStatus('❌ Maps script failed to load. Check API key/refs/billing & Places API.');
           const r = document.getElementById('results');
           if (r) r.innerHTML = '<div class="list-group-item">Maps JS not available.</div>';
         }
@@ -154,7 +207,6 @@
         return;
       }
 
-      // 1) Show a map immediately so something is visible
       const FALLBACK = { lat: 20.5937, lng: 78.9629 }; // India-ish center
       map = new google.maps.Map(document.getElementById("map"), { center: FALLBACK, zoom: 14, mapTypeId: "roadmap" });
       infoWin = new google.maps.InfoWindow();
@@ -162,7 +214,6 @@
       searchBox = new google.maps.places.SearchBox(input);
       origin = new google.maps.LatLng(FALLBACK.lat, FALLBACK.lng);
 
-      // Visible radius
       const initialKm = parseFloat(slider.value || '5');
       setDistanceLabel(initialKm);
       const radiusCircle = new google.maps.Circle({
@@ -171,12 +222,11 @@
         fillColor:"#00b4cc", fillOpacity:0.08, clickable:false
       });
 
-      // Focus box & kick initial search regardless of geolocation
+      // Focus & initial search (with geoloc if available)
       setTimeout(()=>{ input.focus(); input.select(); }, 0);
       let startedInitial = false;
       const startSearchOnce = ()=>{ if (startedInitial) return; startedInitial = true; runSearch(input.value); };
 
-      // 2) Try to center using browser location (optional)
       if (navigator.geolocation){
         setStatus('Locating…');
         navigator.geolocation.getCurrentPosition(
@@ -189,14 +239,11 @@
           (err)=>{ setStatus('⚠️ Location unavailable: ' + err.message); startSearchOnce(); },
           { enableHighAccuracy:true, timeout:8000, maximumAge:60000 }
         );
-      } else {
-        setStatus('Geolocation not supported by this browser.'); startSearchOnce();
-      }
+      } else { setStatus('Geolocation not supported.'); startSearchOnce(); }
 
       google.maps.event.addListenerOnce(map, 'idle', ()=>{ input.focus(); input.select(); startSearchOnce(); });
       map.addListener("bounds_changed", ()=> searchBox.setBounds(map.getBounds()));
 
-      // Pan/zoom re-render
       let userPan=false, userZoom=false;
       map.addListener('dragstart', ()=> userPan=true);
       map.addListener('zoom_changed', ()=> userZoom=true);
@@ -207,7 +254,6 @@
         if (lastPlaces.length) renderPlaces(lastPlaces, {resultsEl, slider, noticeEl, setDistanceLabel});
       });
 
-      // Slider updates (and keep label synced)
       const onDistanceChanged = ()=>{
         const km = parseFloat(slider.value||'5');
         setDistanceLabel(km);
@@ -218,14 +264,12 @@
       slider.addEventListener("input", onDistanceChanged);
       slider.addEventListener("change", onDistanceChanged);
 
-      // Mode toggle
       modeContainer.addEventListener('click', (e)=>{
         const btn = e.target.closest('.btn[data-mode]'); if (!btn) return;
         setModeButtons(btn.dataset.mode);
         if (lastPlaces.length) renderPlaces(lastPlaces, {resultsEl, slider, noticeEl, setDistanceLabel});
       });
 
-      // Search handlers
       const runSearchDebounced = debounce(()=> runSearch(input.value), 650);
       input.addEventListener('keydown', (e)=>{ if (e.key === 'Enter'){ e.preventDefault(); runSearch(input.value); } });
       input.addEventListener('input', runSearchDebounced);
@@ -236,7 +280,6 @@
         const c = map.getCenter(); google.maps.event.trigger(map, 'resize'); map.setCenter(c);
       }, 200));
 
-      // Core search
       function runSearch(queryRaw){
         const query = (queryRaw||'').trim();
         setStatus(query ? 'Searching (Text Search)…' : 'Searching nearby…');
@@ -297,7 +340,7 @@
       window.__runSearch = runSearch;
     }
 
-    // Details: open/closed
+    // ---- Details cache (requests proper fields incl. utc_offset_minutes) ----
     function getPlaceMeta(place){
       const pid = place.place_id;
       if (metaCache.has(pid)) return Promise.resolve(metaCache.get(pid));
@@ -306,7 +349,7 @@
       const p = new Promise((resolve)=>{
         try{
           placesService.getDetails(
-            { placeId: pid, fields: ['opening_hours','current_opening_hours','business_status'] },
+            { placeId: pid, fields: ['opening_hours','current_opening_hours','utc_offset_minutes','business_status'] },
             (details, status)=>{
               let meta = { openState: 'unknown' };
               try{
@@ -346,7 +389,7 @@
       }
 
       const pid = place.place_id;
-      const lat = place.geometry?.location?.lat?.(); 
+      const lat = place.geometry?.location?.lat?.();
       const lng = place.geometry?.location?.lng?.();
       const mapsLink = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr || name)}&query_place_id=${pid}`;
       const dirLink = (lat && lng) ? `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&destination_place_id=${pid}` : mapsLink;
@@ -512,7 +555,6 @@
       if (mode === "top"){
         filtered.sort((a,b) => (b.user_ratings_total || 0) - (a.user_ratings_total || 0));
       } else {
-        // "New" = fewest ratings first (your latest request removed review-age heuristics)
         filtered.sort((a,b) => {
           const da = (a.user_ratings_total || 0) - (b.user_ratings_total || 0);
           if (da !== 0) return da;
@@ -563,7 +605,7 @@
     </div>
   </div>
 
-  <!-- Google Maps API (key included). Using onload instead of callback for reliability -->
+  <!-- Google Maps API (key included). Using onload for reliability -->
   <script
     src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBCDJZDoS6NBc0JYuk11tx7v2kmIKR5I1I&libraries=places,geometry&v=weekly"
     async defer
