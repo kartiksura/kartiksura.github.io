@@ -6,8 +6,7 @@
   <script>
     window.dataLayer = window.dataLayer || [];
     function gtag(){dataLayer.push(arguments);}
-    gtag('js', new Date());
-    gtag('config', 'G-9H97RK50TD');
+    gtag('js', new Date()); gtag('config', 'G-9H97RK50TD');
   </script>
 
   <meta charset="UTF-8" />
@@ -17,48 +16,21 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.1.2/css/bootstrap.min.css" />
 
   <style>
-    :root{
-      --accent:#00b4cc;
-      --accent-soft:#66e0ef;
-      --bg:#000;
-      --text:#fff;
-      --muted:#ddd;
-    }
+    :root{ --accent:#00b4cc; --accent-soft:#66e0ef; --bg:#000; --text:#fff; --muted:#ddd; }
     html,body{ height:100%; }
-    body{
-      background:var(--bg);
-      color:var(--text);
-      font-family:"Open Sans",system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;
-      -webkit-text-size-adjust:100%;
-    }
-
+    body{ background:var(--bg); color:var(--text); font-family:"Open Sans",system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial; -webkit-text-size-adjust:100%; }
     .app{ padding-top:12px; padding-bottom:16px; }
     h1.text-warning{ font-size:clamp(1.25rem,2.8vw,1.8rem); }
     h4.text-secondary{ font-size:clamp(0.95rem,2.2vw,1.1rem); }
 
-    .statusbar{
-      position:sticky; top:0; z-index:10;
-      background:#111; color:#7ff; padding:6px 10px; font-size:12px;
-      border-bottom:1px solid #0aa; display:none;
-    }
+    .statusbar{ position:sticky; top:0; z-index:10; background:#111; color:#7ff; padding:6px 10px; font-size:12px; border-bottom:1px solid #0aa; display:none; }
     .statusbar.show{ display:block; }
 
-    .searchTerm{
-      border:3px solid var(--accent);
-      padding:8px 12px; height:56px; outline:none; font-size:18px; border-radius:5px;
-    }
+    .searchTerm{ border:3px solid var(--accent); padding:8px 12px; height:56px; outline:none; font-size:18px; border-radius:5px; }
     .input-group .searchTerm{ width:auto; flex:1 1 auto; border-top-right-radius:0; border-bottom-right-radius:0; }
-    #go-btn{
-      height:56px; font-weight:600; white-space:nowrap;
-      border-top-left-radius:0; border-bottom-left-radius:0; border:3px solid var(--accent); border-left:0;
-    }
+    #go-btn{ height:56px; font-weight:600; white-space:nowrap; border-top-left-radius:0; border-bottom-left-radius:0; border:3px solid var(--accent); border-left:0; }
 
-    .sticky-controls{
-      position:sticky; top:0; z-index:3;
-      background:linear-gradient(180deg, rgba(0,0,0,0.92), rgba(0,0,0,0.92));
-      padding-top:6px; padding-bottom:8px;
-    }
-
+    .sticky-controls{ position:sticky; top:0; z-index:3; background:linear-gradient(180deg, rgba(0,0,0,0.92), rgba(0,0,0,0.92)); padding-top:6px; padding-bottom:8px; }
     .hint{ font-size:12px; opacity:0.8; }
     .notice{ font-size:12px; color:var(--muted); margin:6px 0 0; }
     .btn-toggle .btn{ cursor:pointer; margin-right:6px; margin-top:6px; }
@@ -69,29 +41,20 @@
     .image-parent{ max-width:180px; }
     .image-parent img{ border-radius:6px; }
 
-    /* Slider (fat & touch-friendly) */
-    #distance-slider{
-      -webkit-appearance:none; width:100%; height:18px; background:transparent; margin:6px 0;
-      cursor:pointer; touch-action:pan-y;
-    }
+    /* Thick, touch-friendly slider (no visible label text) */
+    #distance-slider{ -webkit-appearance:none; width:100%; height:18px; background:transparent; margin:6px 0; cursor:pointer; touch-action:pan-y; }
     #distance-slider:focus{ outline:none; }
-    #distance-slider::-webkit-slider-runnable-track{
-      height:18px; background:#1b1b1b; border-radius:10px; border:1px solid var(--accent);
-    }
-    #distance-slider::-webkit-slider-thumb{
-      -webkit-appearance:none; margin-top:-6px; width:30px; height:30px; border-radius:50%;
-      background:var(--accent); border:2px solid var(--accent-soft); box-shadow:0 0 0 3px rgba(0,180,204,0.15);
-    }
+    #distance-slider::-webkit-slider-runnable-track{ height:18px; background:#1b1b1b; border-radius:10px; border:1px solid var(--accent); }
+    #distance-slider::-webkit-slider-thumb{ -webkit-appearance:none; margin-top:-6px; width:30px; height:30px; border-radius:50%; background:var(--accent); border:2px solid var(--accent-soft); box-shadow:0 0 0 3px rgba(0,180,204,0.15); }
     #distance-slider:active::-webkit-slider-thumb{ transform:scale(1.05); }
 
-    /* InfoWindow readable on white */
+    /* InfoWindow legible on white */
     .iw{ color:#111; }
     .iw .meta{ color:#333; }
     .iw a{ color:#0d6efd; text-decoration:none; }
     .iw a:hover{ text-decoration:underline; }
     .gm-style .gm-style-iw-c, .gm-style .gm-style-iw-d{ color:#111; }
 
-    /* Phones */
     @media (max-width:576px){
       .app{ padding-left:10px; padding-right:10px; }
       .list-group-item{ padding:10px 12px; }
@@ -104,7 +67,7 @@
   </style>
 
   <script>
-    // suppress noisy extension error
+    // Quiet a common extension error so it doesn't kill rendering
     window.addEventListener('unhandledrejection', (e) => {
       const msg = String((e && e.reason && e.reason.message) || e.reason || '');
       if (msg.includes('A listener indicated an asynchronous response')) e.preventDefault();
@@ -112,10 +75,7 @@
 
     function setStatus(msg){
       const el = document.getElementById('statusbar');
-      if (!el) return;
-      el.textContent = msg;
-      el.classList.add('show');
-      console.log('[status]', msg);
+      if (!el) return; el.textContent = msg; el.classList.add('show'); console.log('[status]', msg);
     }
 
     function haversineKm(a,b){ const toRad=d=>d*Math.PI/180;
@@ -124,11 +84,510 @@
       const s1=Math.sin(dLat/2)**2, s2=Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
       return 2*R*Math.asin(Math.sqrt(s1+s2)); }
     function distanceMeters(origin, loc){
-      if (window.google?.maps?.geometry?.spherical) return google.maps.geometry.spherical.computeDistanceBetween(origin, loc);
+      if (window.google && google.maps && google.maps.geometry && google.maps.geometry.spherical){
+        return google.maps.geometry.spherical.computeDistanceBetween(origin, loc);
+      }
       return haversineKm(origin, loc)*1000;
     }
     function debounce(fn, wait=650){ let t; return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args), wait); }; }
 
     function computeOpenState(details){
-      const bs = details?.business_status;
-      if (bs === 'CLOSED_PERMAN_
+      const bs = details && details.business_status;
+      if (bs === 'CLOSED_PERMANENTLY') return 'permanently_closed';
+      if (bs === 'CLOSED_TEMPORARILY') return 'temporarily_closed';
+      const coh = details && details.current_opening_hours;
+      if (coh && typeof coh.isOpen === 'function'){ try { return coh.isOpen() ? 'open' : 'closed'; } catch(_){} }
+      const oh = details && details.opening_hours;
+      if (oh && typeof oh.isOpen === 'function'){ try { return oh.isOpen() ? 'open' : 'closed'; } catch(_){} }
+      if (oh && typeof oh.open_now === 'boolean'){ return oh.open_now ? 'open' : 'closed'; }
+      return 'unknown';
+    }
+
+    // Globals
+    let map, placesService, searchBox, infoWin;
+    let markers = [];
+    let lastPlaces = [];
+    let origin;
+    const metaCache = new Map();
+    const metaPending = new Map();
+    let renderSeq = 0, searchSeq = 0, userAdjustedSlider = false;
+
+    function currentMode(){
+      const active = document.querySelector('#mode-container .btn.active');
+      return (active && active.dataset.mode) || 'top';
+    }
+    function setModeButtons(mode){
+      document.querySelectorAll('#mode-container .btn').forEach(btn=>{
+        btn.classList.toggle('active', btn.dataset.mode===mode);
+      });
+    }
+
+    function gmapsReady(){
+      setStatus('Google Maps JS loaded');
+      if (document.readyState === 'loading'){ document.addEventListener('DOMContentLoaded', startApp); }
+      else { startApp(); }
+    }
+    window.gmapsReady = gmapsReady;
+
+    // If Google script never calls our callback, show a helpful message
+    window.addEventListener('load', ()=>{
+      setTimeout(()=>{
+        if (!window.google || !google.maps || !google.maps.places){
+          const el = document.getElementById('results');
+          if (el) el.innerHTML = '<div class="list-group-item">Google Maps failed to load. Check API key, billing, referrer restrictions, and enable Places API.</div>';
+          setStatus('❌ Maps JS not available (key/referrer/billing/API enablement). See console.');
+        } else if (!map){
+          setStatus('Fallback start (callback may have been missed)'); startApp();
+        }
+      }, 3500);
+    });
+
+    function startApp(){
+      try{
+        setStatus('Starting app…');
+        if (!window.google || !google.maps || !google.maps.places){
+          setStatus('❌ Google Maps not available.'); return;
+        }
+        const resultsEl = document.getElementById("results");
+        const input = document.getElementById("pac-input");
+        const goBtn = document.getElementById("go-btn");
+        const slider = document.getElementById("distance-slider");
+        const modeContainer = document.getElementById("mode-container");
+        const noticeEl = document.getElementById("notice");
+
+        const FALLBACK = { lat: 20.5937, lng: 78.9629 }; // India-ish center
+
+        map = new google.maps.Map(document.getElementById("map"), {
+          center: FALLBACK, zoom: 14, mapTypeId: "roadmap"
+        });
+        placesService = new google.maps.places.PlacesService(map);
+        searchBox = new google.maps.places.SearchBox(input);
+        infoWin = new google.maps.InfoWindow();
+        origin = new google.maps.LatLng(FALLBACK.lat, FALLBACK.lng);
+
+        const radiusCircle = new google.maps.Circle({
+          map, center: origin, radius: parseFloat(slider.value||'5')*1000,
+          strokeColor:"#00b4cc", strokeOpacity:0.8, strokeWeight:1,
+          fillColor:"#00b4cc", fillOpacity:0.08, clickable:false
+        });
+
+        // Focus the search box
+        setTimeout(()=>{ input.focus(); input.select(); }, 0);
+
+        // Ensure we run search once (geoloc success OR idle OR timeout)
+        let startedInitial = false;
+        const startSearchOnce = ()=>{ if (startedInitial) return; startedInitial = true; runSearch(input.value); };
+
+        // Try browser location
+        if (navigator.geolocation){
+          setStatus('Locating…');
+          navigator.geolocation.getCurrentPosition(
+            (pos)=>{
+              const p = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+              origin = new google.maps.LatLng(p.lat, p.lng);
+              map.setCenter(origin);
+              radiusCircle.setCenter(origin);
+              setStatus('Centered to your location.');
+              startSearchOnce();
+            },
+            (err)=>{
+              setStatus('⚠️ Location unavailable: ' + err.message);
+              startSearchOnce();
+            },
+            { enableHighAccuracy:true, timeout:8000, maximumAge:60000 }
+          );
+        } else {
+          setStatus('Geolocation not supported by this browser.');
+          startSearchOnce();
+        }
+
+        google.maps.event.addListenerOnce(map, 'idle', ()=>{ input.focus(); input.select(); startSearchOnce(); });
+        map.addListener("bounds_changed", ()=> searchBox.setBounds(map.getBounds()));
+
+        // Re-render on pan/zoom
+        let userPan = false, userZoom = false;
+        map.addListener('dragstart', ()=>{ userPan = true; });
+        map.addListener('zoom_changed', ()=>{ userZoom = true; });
+        map.addListener('idle', ()=>{
+          if (!(userPan || userZoom)) return;
+          origin = map.getCenter();
+          radiusCircle.setCenter(origin);
+          userPan = false; userZoom = false;
+          if (lastPlaces.length) renderPlaces(lastPlaces, {resultsEl, slider, noticeEl});
+        });
+
+        // Distance slider
+        const onDistanceChanged = ()=>{
+          const km = parseFloat(slider.value||'5');
+          radiusCircle.setRadius(km*1000);
+          userAdjustedSlider = true;
+          if (lastPlaces.length) renderPlaces(lastPlaces, {resultsEl, slider, noticeEl});
+        };
+        slider.addEventListener("input", onDistanceChanged);
+        slider.addEventListener("change", onDistanceChanged);
+
+        // Mode toggle
+        modeContainer.addEventListener('click', (e)=>{
+          const btn = e.target.closest('.btn[data-mode]');
+          if (!btn) return;
+          setModeButtons(btn.dataset.mode);
+          if (lastPlaces.length) renderPlaces(lastPlaces, {resultsEl, slider, noticeEl});
+        });
+
+        // Search
+        function runSearch(queryRaw){
+          const query = (queryRaw||'').trim();
+          setStatus(query ? 'Searching (Text Search)…' : 'Searching nearby…');
+          noticeEl.textContent = "";
+          resultsEl.innerHTML = `<div class="list-group-item">Searching…</div>`;
+          userAdjustedSlider = false;
+
+          const mySearch = ++searchSeq;
+          let aggregated = [];
+          const radiusM = parseFloat(slider.value||'5')*1000;
+
+          const handleBatch = (results, status, pagination) => {
+            if (mySearch !== searchSeq) return;
+            if (status !== google.maps.places.PlacesServiceStatus.OK || !Array.isArray(results)) {
+              if (aggregated.length === 0) {
+                resultsEl.innerHTML = `<div class="list-group-item">No results found.</div>`;
+                setStatus('No results (status: '+status+')');
+              }
+              return;
+            }
+            aggregated = aggregated.concat(results);
+
+            const noGeom = aggregated.filter(r => !r.geometry || !r.geometry.location);
+            const afterGeom = () => {
+              lastPlaces = aggregated;
+              setStatus('Rendering '+lastPlaces.length+' places');
+              renderPlaces(lastPlaces, {resultsEl, slider, noticeEl});
+            };
+
+            if (noGeom.length) {
+              Promise.all(noGeom.slice(0,10).map(r => new Promise(res=>{
+                placesService.getDetails({ placeId: r.place_id, fields: ['geometry'] }, (d, s)=>{
+                  if (s === google.maps.places.PlacesServiceStatus.OK && d && d.geometry && d.geometry.location){
+                    r.geometry = { location: d.geometry.location, viewport: d.geometry.viewport };
+                  }
+                  res();
+                });
+              }))).then(afterGeom);
+            } else { afterGeom(); }
+
+            if (pagination && pagination.hasNextPage && aggregated.length < 60) {
+              setTimeout(()=> { if (mySearch === searchSeq) pagination.nextPage(); }, 300);
+            }
+          };
+
+          try {
+            if (query) {
+              const request = { query, location: origin, radius: radiusM };
+              placesService.textSearch(request, handleBatch);
+            } else {
+              const request = { location: origin, radius: radiusM, type: 'establishment' };
+              placesService.nearbySearch(request, handleBatch);
+            }
+          } catch (err) {
+            console.error('[gmaps] search call failed:', err);
+            resultsEl.innerHTML = `<div class="list-group-item">Search failed. See console.</div>`;
+            setStatus('❌ Search threw an exception');
+          }
+        }
+        window.__runSearch = runSearch; // helper for debugging
+
+        // Triggers
+        const runSearchDebounced = debounce(()=> runSearch(input.value), 650);
+        input.addEventListener('keydown', (e)=>{ if (e.key === 'Enter'){ e.preventDefault(); runSearch(input.value); } });
+        input.addEventListener('input', runSearchDebounced);
+        searchBox.addListener("places_changed", ()=> runSearch(input.value));
+        goBtn.addEventListener('click', ()=> runSearch(input.value));
+
+        window.addEventListener('resize', debounce(()=>{
+          const c = map.getCenter();
+          google.maps.event.trigger(map, 'resize');
+          map.setCenter(c);
+        }, 200));
+      }catch(err){
+        console.error(err);
+        setStatus('❌ Fatal init error (see console)');
+        const resultsEl = document.getElementById("results");
+        if (resultsEl) resultsEl.innerHTML = `<div class="list-group-item">Init error. See console.</div>`;
+      }
+    }
+
+    function clearMarkers(){ markers.forEach(m=>m.setMap(null)); markers = []; }
+
+    function getPlaceMeta(place){
+      const pid = place.place_id;
+      if (metaCache.has(pid)) return Promise.resolve(metaCache.get(pid));
+      if (metaPending.has(pid)) return metaPending.get(pid);
+
+      const p = new Promise((resolve)=>{
+        try{
+          placesService.getDetails(
+            { placeId: pid, fields: ['opening_hours','current_opening_hours','business_status'] },
+            (details, status)=>{
+              let meta = { openState: 'unknown' };
+              try{
+                if (status === google.maps.places.PlacesServiceStatus.OK && details){
+                  meta.openState = computeOpenState(details);
+                }
+              }catch(_){}
+              metaCache.set(pid, meta); metaPending.delete(pid); resolve(meta);
+            }
+          );
+        }catch(_){
+          const meta = { openState: 'unknown' };
+          metaCache.set(pid, meta); metaPending.delete(pid); resolve(meta);
+        }
+      });
+
+      metaPending.set(pid, p);
+      return p;
+    }
+
+    function buildInfoHTML(place, meta){
+      const m = meta || metaCache.get(place.place_id);
+      const name = place.name || 'Place';
+      const addr = place.formatted_address || place.vicinity || '';
+      const rating = (typeof place.rating === 'number') ? place.rating.toFixed(1) : null;
+      const count = place.user_ratings_total || 0;
+      const meters = (place.geometry && place.geometry.location) ? distanceMeters(origin, place.geometry.location) : null;
+      const dist = (meters!=null) ? `${(meters/1000).toFixed(2)} km` : '';
+
+      let openBadge = `<span class="badge badge-light">Hours: unknown</span>`;
+      switch(m && m.openState){
+        case 'open': openBadge = `<span class="badge badge-success">Open now</span>`; break;
+        case 'closed': openBadge = `<span class="badge badge-danger">Closed</span>`; break;
+        case 'temporarily_closed': openBadge = `<span class="badge badge-warning">Temporarily closed</span>`; break;
+        case 'permanently_closed': openBadge = `<span class="badge badge-dark">Permanently closed</span>`; break;
+      }
+
+      const pid = place.place_id;
+      const lat = place.geometry && place.geometry.location && place.geometry.location.lat && place.geometry.location.lat();
+      const lng = place.geometry && place.geometry.location && place.geometry.location.lng && place.geometry.location.lng();
+      const mapsLink = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr || name)}&query_place_id=${pid}`;
+      const dirLink = (lat && lng) ? `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&destination_place_id=${pid}` : mapsLink;
+      const photoUrl = (place.photos && place.photos[0] && typeof place.photos[0].getUrl === 'function')
+        ? place.photos[0].getUrl({maxWidth: 400}) : null;
+
+      return `
+        <div class="iw">
+          <h6>${name}</h6>
+          <div class="meta">${addr || ''}</div>
+          <div class="badges">
+            ${ rating != null ? `<span class="badge badge-warning">★ ${rating}</span>` : '' }
+            <span class="badge badge-info">${count} ratings</span>
+            ${ dist ? `<span class="badge badge-secondary">${dist}</span>` : '' }
+            ${ openBadge }
+          </div>
+          <div class="actions mt-2">
+            <a href="${mapsLink}" target="_blank" rel="noopener">Open in Maps</a>
+            <a href="${dirLink}" target="_blank" rel="noopener">Directions</a>
+          </div>
+          ${ photoUrl ? `<img class="thumb" src="${photoUrl}" alt="${name}">` : '' }
+        </div>
+      `;
+    }
+
+    function createMarker(place){
+      const marker = new google.maps.Marker({ map, title: place.name, position: place.geometry.location });
+      marker.addListener('click', async () => {
+        let meta = metaCache.get(place.place_id);
+        if (!meta) {
+          if (!infoWin) infoWin = new google.maps.InfoWindow();
+          infoWin.setContent(`<div class="iw"><h6>${place.name}</h6><div class="meta">Loading details…</div></div>`);
+          infoWin.open(map, marker);
+          try { meta = await getPlaceMeta(place); } catch(_) {}
+        }
+        infoWin.setContent(buildInfoHTML(place, metaCache.get(place.place_id)));
+        infoWin.open(map, marker);
+      });
+      return marker;
+    }
+
+    function paintList(list, {resultsEl}){
+      resultsEl.innerHTML = "";
+      clearMarkers();
+      const frag = document.createDocumentFragment();
+
+      list.forEach(place=>{
+        if (!place.geometry || !place.geometry.location) return;
+
+        const meters = distanceMeters(origin, place.geometry.location);
+        const distKm = (meters/1000).toFixed(2);
+        const pid = place.place_id;
+        const meta = metaCache.get(pid);
+
+        let openHTML = "<p class='text-muted mb-1'><small>Hours: unknown</small></p>";
+        switch(meta && meta.openState){
+          case 'open': openHTML = "<p class='text-primary mb-1'><small>Open now</small></p>"; break;
+          case 'closed': openHTML = "<p class='text-danger mb-1'><small>Closed</small></p>"; break;
+          case 'temporarily_closed': openHTML = "<p class='text-warning mb-1'><small>Temporarily closed</small></p>"; break;
+          case 'permanently_closed': openHTML = "<p class='text-dark mb-1'><small>Permanently closed</small></p>"; break;
+        }
+
+        const a = document.createElement("a");
+        a.className = "list-group-item list-group-item-action d-flex justify-content-between align-items-center";
+        a.href = "https://www.google.com/maps/search/?api=1&query=" +
+                 encodeURIComponent(place.formatted_address || place.name) +
+                 "&query_place_id=" + place.place_id;
+
+        a.innerHTML = `
+          <div class="flex-column">
+            <strong class="text-dark">${place.name}</strong>
+            <span class="open-status" data-pid="${pid}">${openHTML}</span>
+            <span class="badge badge-info badge-pill">${place.user_ratings_total || 0} ratings</span>
+            <span class="badge badge-secondary badge-pill ml-2">${distKm} km</span>
+          </div>
+          <div class="image-parent">
+            ${ place.photos && place.photos[0] ? `<img src="${place.photos[0].getUrl()}" class="img-fluid" alt="place">` : "" }
+          </div>
+        `;
+        frag.appendChild(a);
+
+        markers.push(createMarker(place));
+
+        const statusEl = a.querySelector(`.open-status[data-pid="${pid}"]`);
+        if (!meta){
+          statusEl.innerHTML = "<p class='text-muted mb-1'><small>Checking hours…</small></p>";
+          getPlaceMeta(place).then(m=>{
+            let html = "<p class='text-muted mb-1'><small>Hours: unknown</small></p>";
+            switch(m && m.openState){
+              case 'open': html = "<p class='text-primary mb-1'><small>Open now</small></p>"; break;
+              case 'closed': html = "<p class='text-danger mb-1'><small>Closed</small></p>"; break;
+              case 'temporarily_closed': html = "<p class='text-warning mb-1'><small>Temporarily closed</small></p>"; break;
+              case 'permanently_closed': html = "<p class='text-dark mb-1'><small>Permanently closed</small></p>"; break;
+            }
+            statusEl.innerHTML = html;
+          });
+        }
+      });
+
+      resultsEl.appendChild(frag);
+      setStatus('Showing '+list.length+' places');
+    }
+
+    function smartOriginAndRadius(results, slider, noticeEl){
+      if (!Array.isArray(results) || results.length === 0) return { changed: false };
+      const locs = results.filter(r => r.geometry && r.geometry.location).map(r => r.geometry.location);
+      if (!locs.length) return { changed: false };
+
+      const maxKm = parseFloat((document.getElementById('distance-slider').value)||'5');
+      const allOutside = locs.every(loc => (distanceMeters(origin, loc)/1000) > maxKm);
+
+      if (allOutside) {
+        const avgLat = locs.reduce((s,l)=>s+l.lat(),0)/locs.length;
+        const avgLng = locs.reduce((s,l)=>s+l.lng(),0)/locs.length;
+        const centroid = new google.maps.LatLng(avgLat, avgLng);
+        const distToOld = (distanceMeters(origin, centroid)/1000).toFixed(1);
+        origin = centroid;
+        map.setCenter(origin);
+        noticeEl.textContent = `Auto-centered to results area (~${distToOld} km from previous center).`;
+        return { changed: true };
+      }
+      return { changed: false };
+    }
+
+    async function renderPlaces(places, {resultsEl, slider, noticeEl}){
+      const mySeq = ++renderSeq;
+      resultsEl.innerHTML = "";
+      clearMarkers();
+      if (!places || !places.length) return;
+
+      smartOriginAndRadius(places, slider, noticeEl);
+
+      const mode = currentMode();
+      const maxKm = parseFloat((document.getElementById('distance-slider').value)||'5');
+
+      let filtered = places.filter(p =>
+        p.geometry && p.geometry.location &&
+        distanceMeters(origin, p.geometry.location) <= maxKm*1000
+      );
+
+      if (!filtered.length && !userAdjustedSlider) {
+        const nearest = [...places]
+          .filter(p => p.geometry && p.geometry.location)
+          .map(p => distanceMeters(origin, p.geometry.location)/1000)
+          .sort((a,b)=>a-b)[0];
+        if (isFinite(nearest)) {
+          const newKm = Math.min(50, Math.max(maxKm, Math.ceil(nearest + 1)));
+          document.getElementById("distance-slider").value = String(newKm);
+          noticeEl.textContent = `Expanded distance to ${newKm} km to include the closest result.`;
+          userAdjustedSlider = true;
+          if (mySeq !== renderSeq) return;
+          filtered = places.filter(p =>
+            p.geometry && p.geometry.location &&
+            distanceMeters(origin, p.geometry.location) <= newKm*1000
+          );
+        }
+      }
+
+      if (!filtered.length) {
+        if (mySeq !== renderSeq) return;
+        resultsEl.innerHTML = `<div class="list-group-item">No results within the selected distance.</div>`;
+        setStatus('No filtered results'); return;
+      }
+
+      if (mode === "top"){
+        filtered.sort((a,b) => (b.user_ratings_total || 0) - (a.user_ratings_total || 0));
+      } else {
+        // "New" = fewest ratings first (heuristics removed per your ask)
+        filtered.sort((a,b) => {
+          const da = (a.user_ratings_total || 0) - (b.user_ratings_total || 0);
+          if (da !== 0) return da;
+          const ra = distanceMeters(origin, a.geometry.location);
+          const rb = distanceMeters(origin, b.geometry.location);
+          return ra - rb;
+        });
+      }
+
+      if (mySeq !== renderSeq) return;
+      paintList(filtered, {resultsEl});
+    }
+  </script>
+</head>
+
+<body>
+  <div id="statusbar" class="statusbar">Loading…</div>
+
+  <div class="container-fluid app">
+    <h1 class="text-warning text-center">Find popular places</h1>
+    <h4 class="text-secondary text-center">Filter by distance and choose Top or New places.</h4>
+
+    <div class="sticky-controls">
+      <div class="input-group">
+        <input id="pac-input" class="form-control searchTerm" placeholder="E.g. Cafes near Whitefield" autofocus />
+        <div class="input-group-append">
+          <button id="go-btn" class="btn btn-info" type="button">Search</button>
+        </div>
+      </div>
+
+      <div class="mt-2 text-light btn-toggle" id="mode-container" role="group" aria-label="Sort mode">
+        <button class="btn btn-sm btn-outline-info active" data-mode="top" title="Sort by number of ratings">Top places</button>
+        <button class="btn btn-sm btn-outline-info" data-mode="new" title="Fewest ratings first">New places</button>
+        <div class="hint mt-1">Top = most ratings first. New = fewest ratings first.</div>
+      </div>
+
+      <div class="mt-2 text-light">
+        <input type="range" id="distance-slider" min="1" max="50" value="5" step="1" />
+        <div class="hint mt-1">Measured from the current map center.</div>
+        <div id="notice" class="notice"></div>
+      </div>
+    </div>
+
+    <div class="mt-3">
+      <div id="map" class="mb-3"></div>
+      <div id="results" class="list-group"></div>
+    </div>
+  </div>
+
+  <!-- Google Maps API (key included) -->
+  <script
+    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBCDJZDoS6NBc0JYuk11tx7v2kmIKR5I1I&libraries=places,geometry&v=weekly&callback=gmapsReady"
+    async defer
+    onerror="(function(){var el=document.getElementById('results'); if(el){ el.innerHTML='<div class=&quot;list-group-item&quot;>Failed to load Google Maps JS (network/key).</div>'; } var sb=document.getElementById('statusbar'); if(sb){ sb.classList.add('show'); sb.textContent='❌ Failed to load Google Maps JS'; } })();">
+  </script>
+</body>
+</html>
